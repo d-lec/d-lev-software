@@ -1,0 +1,52 @@
+//////////////////////
+// THD 7 : UI & HCL //
+//////////////////////
+@thd_7 {	(P0 == 0) ? pc := @boot_ok	// (boot flg == 0) ? boot ok  ** THREAD 7 BEGIN **
+	s0 := ' !WS'	// ' !WS' (SW! ) 
+	mem[@menu_pg_titles] := P0	// boot error to D-LEV UI screen
+@boot_ok	s0 := 0x3	// XSR[1:0] enable
+	reg[`reg_vect] := P0
+	s7 := pc := @lcd_init_timer	// <=> lcd_init_timer()
+	s7 := pc := @lcd_init	// <=> lcd_init()
+	s0 := 0xfc	// XSR[7:2] enable 
+	reg[`reg_vect] := P0
+	s0 := 0	// profile 0
+	s1 := 1	// sys_f := 1 (pro)
+	s7 := pc := @pre_pro_load	// <=> pre_pro_load()
+	s7 := pc := @sys_regs_upd	// <=> sys_regs_upd()
+	s0 := 0	// preset 0
+	s1 := -1	// sys_f := -1 (pre)
+	s7 := pc := @pre_pro_load	// <=> pre_pro_load()
+	s7 := pc := @params_page_upd	// <=> params_page_upd()
+	s7 := pc := @lcd_upd	// <=> lcd_upd()
+	s7 := pc := @hcl_init	// <=> hcl_init()
+// loop forever
+@loop	s7 := pc := @hcl	// <loop start> <=> hcl()
+	s7 := pc := @ui	// <=> ui()
+	s7 := pc := @unmute	// <=> unmute()
+	pc := @loop	// <loop end>
+	}	
+/////////////////////////////////
+// XSR 7 : I/O & MIDI & SCULPT //
+/////////////////////////////////
+@xsr_7 {	s1 :bu= mem[@idx_ds]	// get idx
+	P1--	// idx--
+	(s1 !< 0) ? pc := @idx_nlz	// (idx !< 0) ?
+	P1 := 9	// idx := max
+	s7 := pc := @midi	// <=> @midi()
+	s7 := pc := @acal_timer	// <=> acal_timer()
+	pc := @idx_sto	// done
+@idx_nlz	s2 := 8	// 8
+	(s1 <u P2) ? pc := @idx_lt8	// (idx < 8) ?
+	s7 := pc := @input_deb	// <=> input_deb()
+	s7 := pc := @error_chk	// <=> error_chk()
+// P_P7 (Auto)
+	s0 := mem[@p_p7_ds]	// get Auto[0:249]
+	s7 := pc := @sculpt	// <=> sculpt()
+	pc := @idx_sto	// done
+@idx_lt8	s7 := pc := @enc_accum	// <=> enc_accum()
+@idx_sto	mem[@idx_ds] :b= P1	// sto idx
+	pc :i= P7	// => IRETURN
+@idx_ds {	mem[1] :b= ( 0 ) } }	// ** IDX_DS **   ** XSR END **
+
+

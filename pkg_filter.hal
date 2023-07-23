@@ -1,0 +1,652 @@
+// SLIM(0:in, 1:inc, 6:addr, 7:rtn | 0:out) 
+// slew limiter (linear)
+// rail-to-rail signed I/O
+// (out < in) ? out += inc : out -= inc
+// differences smaller than inc: out := in
+// mem[s6]   := accum
+// 16/17 cycles max/min
+@slim {	s2 := s1	// cpy inc  ** SLIM() START **
+	P0 := nsb(s0)	// sgn => uns
+	s7 := pc := @slim_ubi	// => @slim_ubi()
+	P0 := nsb(s0)	// uns => sgn
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// SLIM_UBI(0:in, 1:fall, 2:rise, 6:addr, 7:rtn | 0:out) 
+// bi-modal slew limiter (linear)
+// rail-to-rail unsigned I/O
+// (out < in) ? out += rise : out -= fall
+// differences smaller than rise|fall: out := in
+// mem[s6]   := accum
+// 11/10 cycles max/min
+@slim_ubi {	s4 := mem[s6]	// get accum  ** SLIM_UBI() START **
+	(s4 <u s0) ? pc := @rise	// (accum < in) ? rise
+@fall	P4 -u= s1	// accum -= fall 
+	P4 := lim(s4)	// lim(accum)
+	(s4 !<u s0) ? pc := @done	// (accum !< in) ?
+	P4 := s0	// accum := in
+	pc := @done	// done
+@rise	P4 +u= s2	// accum += rise
+	P4 := lim(s4)	// lim(accum)
+	(s4 <u s0) ? pc := @done	// (accum < in) ?
+	P4 := s0	// accum := in
+@done	P0 := P4	// out := accum
+	mem[P6] := s0	// sto out
+	P2 P1	// clean
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// F1_POLY(1:freq, 7:rtn | 1:w) 
+// tuning scaling & correction for 1st order filter
+// max lpf tuning deviation: +/- 1.5%
+// freq max ~A8 (7040Hz) lpf tuning
+// note: Fs = 48014.32292
+// see "1st_2nd_filter_compensation_2019-02-20.xls" for details
+// 6 cycles max
+@f1_poly {	s2 := 0x5eb851eb	// poly B (0.37)  ** F1_POLY() START **  
+	P2 *xu= s1	// B * f
+	s3 := 0xeb851eb8	// poly A (0.92)
+	P3 -u= P2	// A - (B * f)
+	P1 *xu= P3	// w := f(A - (B * f))
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+	
+// F2_POLY(1:freq, 7:rtn | 1:w) 
+// tuning scaling & correction for 2nd order state variable variable filter
+// max tuning deviation: +/- 0.005%
+// freq max A8 (7040Hz)
+// note: Fs = 48014.32292
+// see "1st_2nd_filter_compensation_2019-07-22.xls" for details
+// 7 cycles max
+@f2_poly {	s2 := 0x840e171	// poly B (0.03224)  ** F2_POLY() START **  
+	P2 *xu= s1	// B * f
+	P2 *xu= s1	// B * f^2
+	s3 := 0xebd512ec	// poly A (0.92122)
+	P3 -u= P2	// A - (B * f^2)
+	P1 *xu= P3	// w := f(A - (B * f^2))
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// LP1_UBI(0:in, 1:fall, 2:rise, 6:addr, 7:rtn | 0:lp) 
+// 1st order filter with separate fall and rise rates
+// unsigned I/O
+// can't overload if (w < 0.5)
+// w = 1 - e^(-2 * pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6] := lp
+// 9 cycles max
+@lp1_ubi {	s4 := mem[s6]	// get lp  ** LP1_UBI() START **  
+	(s0 <u s4) ? pc := @in_lt_lp	// (in < lp) ?
+	P1 := s2	// w := rise
+@in_lt_lp	s4 *xu= s1	// lp * w (cpy)
+	P0 *xu= P1	// in * w
+	P0 -u= P4	// hp := (in - lp) * w
+	P0 +us= P4	// lp := hp + lp
+	mem[P6] := s0	// sto lp
+	pc := P7, P2 }	// RETURN =>  ** SUB END **
+
+	
+// HP2(0:in, 1:w, 6:addr, 7:rtn | 0:hp, 6:addr) 
+// 2nd order high pass filter
+// signed I/O
+// pre accum attenuation
+// some hf tuning deviation
+// some hf gain-up
+// damping = 1.5
+// note: will overload if w is set too high
+// w = 2 * sin(pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6]    := bp
+// mem[s6+4]  := lp
+// 13 cycles max 
+@hp2 {	s3 := mem[s6]	// get bp  ** HP2() START ** 
+	s3 >>>= 1	// bp/2 (cpy)
+	P0 -s= P3	// in - bp/2
+	P0 -s= s3	// in - bp
+	s4 := mem[s6+4]	// get lp
+	P0 -s= s4	// hp := (in - bp) - lp
+	s0 *xsu= s1	// hp * w
+	P0 +s= P3	// bp := (hp * w) + bp
+	mem[s6] := s0	// sto bp
+	P0 *xsu= P1	// bp * w
+	P0 +s= P4	// lp := (bp * w) + lp
+	mem[s6+4] := P0	// sto lp
+	pc := P7 }	// RETURN =>  ** SUB END **	
+
+	
+// HP4(0:in, 1:w, 6:addr, 7:rtn | 0:hp) 
+// 4th order high pass filter
+// see hp2() for details
+// mem[s6]    := bp_1
+// mem[s6+4]  := lp_1
+// mem[s6+8]  := bp_0
+// mem[s6+12] := lp_0
+// 5 + 13+13 = 31 cycles max 
+@hp4 {	s1 := s1	// cpy w  ** HP4() START ** 
+	s7 := pc := @hp2	// <=> hp2()
+	P6 +u= 8	// offs addr 
+	s7 := pc := @hp2	// <=> hp2()
+	pc := P7, P6 }	// RETURN =>  ** SUB END **
+	
+
+// LP4(0:in, 1:w, 6:addr, 7:rtn | 0:lp, 1:w, 6:addr+16) 
+// 4th order low pass filter
+// signed I/O
+// pre accum attenuation (~rail-to-rail I/O)
+// some hf tuning deviation
+// ~critically damped (damping = 2, 1)
+// note: first stage will overload if w is set too high
+// w = 2 * sin(pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6]    := bp_0
+// mem[s6+4]  := lp_0
+// mem[s6+8]  := bp_1
+// mem[s6+12] := lp_1
+// 23 cycles max
+@lp4 {	s3 := mem[s6]	// get bp  ** LP4() START ** 
+	P0 -s= s3	// in - bp
+	P0 -s= s3	// in - 2bp
+	s4 := mem[s6+4]	// get lp
+	P0 -s= s4	// hp := (in - 2bp) - lp
+	P0 *xsu= s1	// hp * w
+	P0 +s= P3	// bp := (hp * w) + bp
+	mem[s6] := s0	// sto bp
+	P0 *xsu= s1	// bp * w
+	P0 +s= P4	// lp := (bp * w) + lp
+	mem[s6+4] := s0	// sto lp
+// SVF_1
+	s3 := mem[s6+8]	// get bp
+	P0 -s= s3	// in - bp
+	s4 := mem[s6+12]	// get lp
+	P0 -s= s4	// hp := (in - bp) - lp
+	P0 *xsu= s1	// hp * w
+	P0 +s= P3	// bp := (hp * w) + bp
+	mem[s6+8] := s0	// sto bp
+	P0 *xsu= s1	// bp * w
+	P0 +s= P4	// lp := (bp * w) + lp
+	mem[s6+12] := s0	// sto lp
+	P6 += 16	// addr += 16
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// NOTCH(0:in, 1:w, 6:addr, 7:rtn | 0:notch, 6:addr+8) 
+// 2nd order state variable notch filter
+// d = 0.25
+// signed I/O
+// will overload if w set too high
+// some hf tuning deviation:
+// w = 2 * sin(pi * Fc/Fs)
+// w = 2 * pi * Fc/Fs
+// Fc = w * Fs / (2 * pi)
+// mem[s6]   := bp
+// mem[s6+4] := lp
+// 14 cycles max
+@notch {	s3 := mem[s6]	// get bp  ** NOTCH() START **
+	s3 >>>= 2	// bp * d
+	P0 -s= P3	// in - (bp * d)
+	s4 := mem[s6+4]	// get lp
+	P0 -s= s4	// hp := in - (bp * d) - lp
+	s0 *xsu= s1	// hp * w
+	P3 +s= P0	// bp := bp + (hp * w)
+	mem[s6] := s3	// sto bp
+	P3 *xsu= P1	// bp * w
+	P4 +s= P3	// lp := lp + (bp * w)
+	mem[s6+4] := s4	// sto lp
+	P0 += P4	// hp + lp
+	P6 += 8	// addr += 8
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+
+// PITCH_TRACK(0:w_i, 7:rtn | 0:w_o) 
+// calculate pitch tracking filter cutoff
+// stay -1 octave (at least), limit min and max BW
+@pitch_track {	s7 := pc := @exp2_uint_np	// <=> exp2_uint_np()  ** PITCH_TRACK() START **
+	s1 := mem[@o_p5_ds]	// get oct[-7:7]
+	(s1 < 0) ? pc := @oct_lz	// (oct < 0) ? only go lower, not higher
+	P1 := 0	// oct := 0
+@oct_lz	P1--	// oct - 1
+	P0 <<= P1	// w_i << oct
+	s2 := 0x4051e92	// max := 120Hz
+	(s0 <u s2) ? pc := @lt_max	// (w < max) ?
+	P0 := s2	// w := max
+@lt_max	P2 := 0x66e975	// min := 12Hz
+	(s0 !<u s2) ? pc := @done	// (w !< min) ?
+	P0 := s2	// w := min
+@done	pc := P7, P2 }	// => RETURN  ** SUB END **
+
+
+// HUM_FILT(0:in, 1:w, 4:50hz, 6:addr, 7:rtn | 0:out) 
+// 2x LP4(), 4x NOTCH()
+// unsigned I/O
+// f_tbl based on 196.666666MHz / (2^12) = 48.01432kHz!
+// mem[s6]    := bp_0 (LP4_0)
+// mem[s6+4]  := lp_0
+// mem[s6+8]  := bp_1
+// mem[s6+12] := lp_1
+// mem[s6+16] := bp_0 (LP4_1)
+// mem[s6+20] := lp_0
+// mem[s6+24] := bp_1
+// mem[s6+28] := lp_1
+// mem[s6+32] := bp (NOTCH_0)
+// mem[s6+36] := lp
+// mem[s6+40] := bp (NOTCH_1)
+// mem[s6+44] := lp
+// mem[s6+48] := bp (NOTCH_2)
+// mem[s6+52] := lp
+// mem[s6+56] := bp (NOTCH_3)
+// mem[s6+60] := lp
+@hum_filt {	s5 := @f_tbl	// f_tbl addr  ** HUM_FILT() START **
+	(P4 == 0) ? pc := @60Hz	// (50Hz == 0) ?
+	P5 += 16	// table offset
+// lp4 bank
+@60Hz	P0 := nsb(s0)	// uns to sgn
+	P0 >>>= 1	// in / 2 (headroom)
+	s7 := pc := @lp4	// <=> lp4()
+	s7 := pc := @lp4	// <=> lp4()
+// notch filter bank
+	P0 >>>= 1	// in / 2 (headroom)
+	P1 := mem[s5+0]	// w
+	s7 := pc := @notch	// <=> notch()
+	s1 := mem[s5+4]	// w
+	s7 := pc := @notch	// <=> notch()
+	s1 := mem[s5+8]	// w
+	s7 := pc := @notch	// <=> notch()
+	s1 := mem[P5+12]	// w
+	s7 := pc := @notch	// <=> notch()
+	P0 <<= 2	// out * 4 (headroom)
+	P0 := nsb(s0)	// sgn to uns
+	pc := P7, P6	// RETURN =>
+@f_tbl {	mem[1] := ( 0x202904d ) 	// 60Hz ** F_TBL **
+	mem[1] := ( 0x4051e92 )	// 120Hz
+	mem[1] := ( 0x607a8c8 )	// 180Hz
+	mem[1] := ( 0x80a2ce7 )	// 240Hz
+	mem[1] := ( 0x1accdac )	// 50Hz
+	mem[1] := ( 0x3599a2a )	// 100Hz
+	mem[1] := ( 0x5066450 )	// 150Hz
+	mem[1] := ( 0x6b32aef ) } }	// 200Hz  ** SUB END **
+
+
+// SVF_HP(0:in, 1:w, 2:d, 6:addr, 7:rtn | 0:hp, 6:addr) 
+// 2nd order state variable high pass filter
+// bp & lp are at mem locations
+// signed I/O
+// input address is NOT consumed 
+// will overload if w & 1/d set too high
+// some hf tuning deviation:
+// w = 2 * sin(pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6]   := bp
+// mem[s6+4] := lp
+// 14 cycles max
+@svf_hp {	s3 := mem[s6]	// get bp  ** SVF_HP() START **
+	s3 *xsu= P2	// bp * d (cpy)
+	P0 -s= P3	// in - (bp * d)
+	P0 := sat(s0)	// sat(in - (bp * d))
+	s4 := mem[s6+4]	// get lp
+	P0 -s= s4	// hp := in - (bp * d) - lp
+	P0 := sat(s0)	// sat(hp)
+	s0 *xsu= s1	// hp * w
+	P3 +s= P0	// bp := bp + (hp * w)
+	mem[s6] := s3	// sto bp
+	P3 *xsu= P1	// bp * w
+	P4 +s= P3	// lp := lp + (bp * w)
+	mem[s6+4] := P4	// sto lp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// SVF_SEL(0:hp, 5:sel, 6:addr, 7:rtn | 0:out) 
+// sel: 0:na, 1:hp, 2:bp, 3:lp, 4:notch
+// mem[s6]    := bp
+// mem[s6+4]  := lp
+// 8 cycles max
+@svf_sel {	
+	P5 -= 2	// sel - 2  ** SVF_SEL() START **
+	(s5 !< 0) ? pc := @nlt2	// (sel !< 2) ? 
+	P6 P5	// clean
+	pc := P7	// RETURN =>
+@nlt2	P5--	// sel--
+	(s5 !< 0) ? pc := @nlt3	// (sel !< 3) ? 
+	P0 := mem[P6]	// 2:bp
+	pc := P7, P5	// RETURN =>
+@nlt3	(P5 != 0) ? pc := @n3	// (sel != 3) ? 
+	P0 := mem[P6+4]	// 3:lp
+	pc := P7	// RETURN =>
+@n3	s1 := mem[P6+4]	// 4:notch
+	P0 += P1	// hp + lp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// SVF_XMIX(0:in_0, 1:xmix, 4:in_1, 7:rtn | 0:out) 
+// crossfades 2 signed inputs together
+// in_0 : filter input
+// in_1 : bypass input
+// can't ofl/ufl
+// expects xmix[0:31](fs)
+// 6 cycles max
+@svf_xmix {	P0 *xsu= s1	// in_1 * xmix  ** SVF_XMIX() START **
+	s2 := 0xf8000000	// ~xmix[31:27]
+	P1 ^= P2
+	P4 *xsu= P1	// in_0 * ~xmix[31:27]
+	P0 +s= P4	// add
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// SVF(0:in, 1:freq, 2:damp, 5:sel, 6:addr, 7:rtn | 0:out) 
+// svf 2x in series
+// sel: -4:notch2, -3:lp2, -2:bp2, -1:hp2, 0:thru, 1:hp4, 2:bp4, 3:lp4, 4:notch4
+// mem[s6]    := bp_a
+// mem[s6+4]  := lp_a
+// mem[s6+8]  := bp_b
+// mem[s6+12] := lp_b
+// 18 + 2*(14+8) = 62 cycles max
+@svf {	(s5 != 0) ? pc := @nz	// (sel != 0) ?  ** SVF() START **  
+@done	P6 P5 P2 P1	// clean
+	pc := P7	// RETURN =>
+@nz	(s5 < 0) ? pc := @lz	// (sel < 0) ? 
+	s1 := s1	// cpy freq
+	s3 := 0x1000000	// 1/256 - 1st stage damping offset / minimum
+	s2 +u= P3	// damp + 1/256 (cpy)
+	P2 := lim(s2)	// damp_offs := lim(damp + 1/256)
+	s2 := s2	// cpy damp_offs
+	s5 := s5	// cpy sel
+	s6 += 8	// cpy offset addr
+	s7 := pc := @svf_hp	// => @svf_hp()
+	s7 := pc := @svf_sel	// => @svf_sel()
+	P0 *xsu= P2	// out * damp_offs (scale)
+	pc := @svf2	// do second svf
+@lz	P5 *= -1	// -sel
+@svf2	s7 := pc := @svf_hp	// => @svf_hp()
+	s7 := pc := @svf_sel	// => @svf_sel()
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// FORM(0:in, 1:freq, 2:damp, 6:addr, 7:rtn | 0:out) 
+// 2nd order bandpass svf
+// mem[s6]    := bp
+// mem[s6+4]  := lp
+// 3 + 14 = 17 cycles max
+@form {	s7 := pc := @svf_hp	// => @svf_hp()  ** FORM() START **  
+	P0 := mem[P6]	// bp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// RESON sub - (0:in, 1:lp_w, 2:c_fb, 3:a_fb, 4:dly, 5:tap, 6:0, 7:rtn | 0:out) 
+// RESON sub - (6:clr, 7:rtn | 6:clr) 
+// absorptive allpass reverberator nested in a comb filter
+// allpass operates at 1/2 max to avoid overload
+// lp_w: lowpass feedback corner frequency
+// c_fb: comb feedback gain (+/-0.5)
+// a_fb: ap feedback gain (+/-0.5)
+// dly:  combined delay
+// tap:  allpass delay
+// clr:  if 0 normal operation, else clear mem location @ clr, lp, and idx's
+// note - separate input parmeter list for clearing!
+// I/O are signed 32 bit
+// 27 + 19 = 46 cycles max
+@reson {	(s6 == 0) ? pc := @clr_z	// (clr == 0) ?  ** RESON SUB START **  
+// mode: mem init
+	s6 &= 1023	// mask clr (cpy)
+	P6 *= 4	// 4 byte stride
+	P6 += @data	// offset
+	s0 := 0
+	mem[@a_idx] :h= s0	// clr a_idx
+	mem[@c_idx] :h= s0	// clr c_idx
+	mem[@lp] := s0	// clr lp
+	mem[P6] := P0	// clr mem
+	pc := P7	// RETURN =>
+// mode: normal operation
+// c_addr calc
+@clr_z	P6 :hu= mem[@c_idx]	// get c_idx (pop clr)
+	P6++	// c_idx++
+	(s6 <u P4) ? pc := @c_lt	// (c_idx++ < dly) ?
+	P6 := s5	// c_idx := tap
+@c_lt	mem[@c_idx] :h= s6	// sto c_idx
+	P6 *u= 4	// c_idx *= 4
+	s7 := @data	// addr (data)
+	P6 +u= s7	// c_addr := addr + (c_idx * 4)
+// a_addr calc
+	s4 :hu= mem[@a_idx]	// get a_idx
+	P4++	// a_idx++
+	(s4 <u P5) ? pc := @a_lt	// (a_idx++ < tap) ?
+	P4 := 0	// a_idx := 0
+@a_lt	mem[@a_idx] :h= s4	// sto a_idx
+	P4 *u= 4	// a_idx *= 4
+	P4 +u= P7	// a_addr = addr + (a_idx * 4)
+// aar
+	s5 := mem[s6]	// get c_old
+	s6 := @lp	// lp addr
+	s7 := pc := @reson_aar	// => @reson_aar()
+// global feedback
+	s1 *xs= P2	// aap * c_fb (cpy)
+	P1 *su= 2	// *2
+	P1 := sat(s1)	// sat
+	P0 +s= P1	// in + sat
+	P0 := sat(s0)	// c_new := sat
+	mem[P6] := P0	// sto c_new
+// scale & sat output
+	s0 := P1	// mov out
+	pc := P7	// RETURN =>
+@lp	mem[1] := ( 0 )	// lp
+@c_idx	mem[1] :h= ( 0 )	// c_idx
+@a_idx	mem[1] :h= ( 0 )	// a_idx
+@data	mem[1024] := ( 0 ) }	// data[]  ** SUB END **
+
+
+// RESON_AAR sub - (1:lp_w, 3:a_fb, 4:a_addr, 5:in, 6:lp_addr, 7:rtn | 1:out) 
+// absorptive allpass reverberator
+// lp_w: lowpass feedback corner frequency
+// a_fb: ap feedback gain (+/-0.5)
+// I/O are signed 32 bit
+// 12 + 7 = 19 cycles max
+@reson_aar {	s5 *xs= s3	// in * a_fb (cpy)  ** RESON_AAR SUB START **  
+	s0 := mem[s4]	// get a_old
+	s7 := pc := @lp1	// => @lp1()
+	P0 -s= P5	// lp - (in * a_fb)
+	P0 := sat(s0)	// sat
+	P0 *su= 2	// *2
+	s1 := sat(P0)	// a_out := sat (mov)
+	s1 *xs= P3	// a_out * a_fb (cpy)
+	P5 >>>= 1	// in/2
+	P1 +s= P5	// a_new := (a_out * a_fb)*2 + in/2
+	mem[P4] := P1	// sto a_new
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// RESON_XMIX(0:in_0, 1:xmix, 4:in_1, 7:rtn | 0:out_0, 4:out_1) 
+// crossfades 2 signed inputs but doesn't combine them
+// in_0 : filter input
+// in_1 : bypass input
+// can't ofl/ufl
+// expects xmix[-31:31](fs)
+// 10 cycles max
+@reson_xmix {	s1 >>>= 31	// xmix full msb (cpy)  ** RESON_XMIX() START **
+	P0 ^= P1	// in_0 ^ xmix full msb (input polarity)
+	s2 := sgn(s1)	// |xmix|
+	P1 *su= P2	// 
+	P1 *u= 2	// fs
+	P0 *xsu= s1	// out_0 := in_0 * xmix
+	s3 := 0xf8000000	// flip bits
+	P1 ^= P3
+	P4 *xsu= P1	// out_1 := in_1 * ~xmix
+	pc := P7 }	// RETURN =>
+
+
+// RESON_DLY(0:enc_fs, 7:rtn | 0:out) 
+// scales resonator delay fs encoder value via 4th order polynomial
+// 10 cycles max
+@reson_dly {	P0 := ~s0	// ~enc_fs  ** RESON_DLY() START **
+	s1 := s0 >> 3	// ~enc_fs/8 (cpy)
+	P0 *xu= s0	// (~enc_fs)^2
+	P0 *xu= s0	// (~enc_fs)^4
+	s2 := 0xdef9db22	// 0.871
+	P0 *xu= P2	// (~enc_fs)^4 * 0.871
+	P0 += P1	// combine
+	P0 >>= 22	// scale
+	P0 += 4	// offset (min 5)
+	pc := P7 }	// RETURN =>
+
+
+// LP1(0:in, 1:w, 6:addr, 7:rtn | 0:lp) 
+// 1st order filter
+// signed I/O
+// w = 1 - e^(-2 * pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6] := lp
+// 3 +7 = 10 cycles
+@lp1 {	s7 := pc := @hp1	// => @hp1()  ** LP1() START **  
+	P0 := mem[P6]	// get lp
+	pc := P7, P1 }	// RETURN =>  ** SUB END **
+
+
+// HP1(0:in, 1:w, 6:addr, 7:rtn | 0:hp, 1:w, 6:addr) 
+// 1st order filter
+// signed I/O, all I/O is passthru!
+// w = 1 - e^(-2 * pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6] := lp
+// 7 cycles
+@hp1 {	s2 := mem[s6]	// get lp  ** HP1() START **  
+	P0 -= s2	// hp := in - lp
+	P0 := sat(s0)	// sat(hp)
+	s0 *xsu= s1	// hp * w (cpy)
+	P2 += P0	// lp := lp + (hp * w)
+	mem[s6] := P2	// sto lp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// EQ_UNIT(0:in, 1:w, 2:eq, 3:boost, 4:hi, 6:addr, 7:rtn | 0:out, 1:w, 2:eq, 3:boost, 4:hi, 6:addr)
+// 1st order bass|treble boost|cut EQ
+// all I/O is passthru!
+// mem[s6] := lp
+// 9 +7 = 16 cycles max
+@eq_unit {	s0 *xs= s2	// in * eq (cpy) ** EQ_UNIT SUB START **
+	s7 := pc := @hp1	// => @hp1()
+	(s4 != 0) ? pc := @hi	// (hi != 0) ?
+	P0 := mem[s6]	// get lp
+@hi	P0 *su= s3	// hp|lp * boost
+	s5 := sat(P0)	// sat (mov)
+	P0 +s= P5	// combine
+	P0 := sat(s0)	// sat
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// EQ_TREB(0:in, 2:eq, 6:addr, 7:rtn | 0:out)
+// treble boost/cut EQ
+// 2nd order
+// mem[s6]   := lp1
+// mem[s6+4] := lp0
+// 11 +16+16 = 43 cycles max
+@eq_treb {	s1 := 0x66666666	// w := 0.4 (3902.4 Hz)  ** EQ_TREB SUB START **
+	s3 := 3	// boost := 3
+	s4 := 1	// hi := 1
+	(s2 !< 0) ? pc := @eq_nlz	// (eq !< 0) ?
+	P1 >>= 1	// w/2
+	P3 := 1	// boost := 1
+@eq_nlz	s7 := pc := @eq_unit	// => @eq_unit()
+	P6 +u= 4	// offs addr
+	s7 := pc := @eq_unit	// => @eq_unit()
+	P6 P4 P3 P2 P1	// clean
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// EQ_BASS(0:in, 2:eq, 6:addr, 7:rtn | 0:out)
+// bass boost/cut EQ
+// 2nd order
+// mem[s6]   := lp1
+// mem[s6+4] := lp0
+// 11 +16+16 = 43 cycles max
+@eq_bass {	s1 := 0x51eb851	// w := 0.02 (154.3 Hz)  ** EQ_BASS SUB START **
+	s3 := 4	// boost := 4
+	s4 := 0	// hi := 0
+	(s2 !< 0) ? pc := @eq_nlz	// (eq !< 0) ?
+	P1 <<= 1	// w*2
+	P3 := 1	// boost := 1
+@eq_nlz	s7 := pc := @eq_unit	// => @eq_unit()
+	P6 +u= 4	// offs addr
+	s7 := pc := @eq_unit	// => @eq_unit()
+	P6 P4 P3 P2 P1	// clean
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// EQ_TONE(0:in, 2:eq, 6:addr, 7:rtn | 0:out)
+// bass/treble boost EQ
+// eq<0: boost bass, else boost treble
+// 2nd order
+// mem[s6]   := lp1
+// mem[s6+4] := lp0
+// 4 +43 = 47 cycles max
+@eq_tone {	(s2 < 0) ? pc := @eq_lz	// (eq < 0) ?  ** EQ_TONE SUB START **
+	s7 := pc := @eq_treb	// => @eq_treb()
+	pc := P7	// RETURN =>
+@eq_lz	P2 *s= -1	// |eq|
+	s7 := pc := @eq_bass	// => @eq_bass()
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// FORM_FLG_UPD(7:rtn | -)
+// logical ORing of all formant level encoder values (for use as bank enable/bypass)
+// 17 cycles max
+@form_flg_upd {	s0 :bu= mem[@f_p1_ds+4]	// ** FORM_FLG_UPD SUB START **
+	s1 :bu= mem[@f_p3_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p5_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p15_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p17_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p19_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p23_ds+4]	
+	P0 |= P1
+	s1 :bu= mem[@f_p25_ds+4]	
+	P0 |= P1
+	mem[@form_flg_ds] :b= P0	// sto form_flg
+	pc := P7 }	// RETURN =>  ** SUB END **
+@form_flg_ds {	mem[1] :b= ( 0 ) }	// ** FORM_FLG_DS **
+	
+
+// SCULPT(0:auto, 7:rtn | -) 
+// for unmonitored & sculpture use
+// bi-modal acal of both axes to A0 / -48dB (pre!)
+// [A0:A2] hysteresis of pitch for preset cycling
+// auto=0 disable
+// must set Vrev=0 for volume axis to work right
+@sculpt {	(s0 == 0) ? pc := @done	// (auto == 0) ?  ** SCULPT() START **
+	s1 := 0xc0000000	// A0 / -48dB
+// pitch axis
+	s2 := mem[@p_raw_ds]	// get p_raw
+	P2 -u= s1	// p_raw - A0
+	P2 := sat(s2)	// sat
+	P2 >>>= 24	// sat >>> 24
+	s2 >>>= 4	// p_test : (neg || >= A2) (cpy)
+	(P2 == 0) ? pc := @no_sto	// (p_test == 0) ?
+	P0 >>= 1	// auto/2
+	(s0 == 0) ? pc := @no_sto	// (auto/2 == 0) ?
+	mem[@p_hyst_ds] :b= s2	// sto p_hyst_ds
+@no_sto	(s2 < 0) ? pc := @p_lz	// (sat < 0) ?
+	P2 := 1	// use 1
+@p_lz	s3 := mem[@p_nul_ds]	// get p_nul
+	P3 -us= P2	// p_nul -=
+	P3 := lim(s3)	// lim
+	mem[@p_nul_ds] := P3	// sto p_nul
+// volume axis
+	s2 := mem[@v_raw_ds]	// get v_raw
+	P2 -u= P1	// v_raw - -48dB
+	P2 := sat(s2)	// sat
+	P2 >>>= 22	// sat >>> 22
+	(s2 < 0) ? pc := @v_lz	// (sat < 0) ?
+	P2 := 1	// use 1
+@v_lz	s3 := mem[@v_nul_ds]	// get v_nul
+	P3 -us= P2	// v_nul -=
+	P3 := lim(s3)	// lim
+	mem[@v_nul_ds] := P3	// sto v_nul
+// finish up
+@done	pc := P7, P0 }	// RETURN =>  ** SUB END **
+

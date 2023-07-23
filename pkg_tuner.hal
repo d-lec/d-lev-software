@@ -1,0 +1,155 @@
+
+// TUNER(0:pitch, 2:out_led, 4:qant, 5:brit, 6:vol, 7:rtn | -) 
+// do PWM for circular LED note & 7 segment hex display
+// unsigned int input 5.27
+@tuner {	s3 := 0x46000000	// ** TUNER() START **
+	P0 += P3	// const offset (+8 oct, +9 note)
+// center led
+	s7 := pc := @tuner_blink	// <=> tuner_blink()
+	P2 <<= 23	// center led := out_led
+// note quantize
+	s0 *= 384	// pitch * (12 * 2^5) (note_frac) (cpy)
+	s1 := s0	// copy note_frac
+	s7 := pc := @quant_sq	// <=> quant_sq()
+	P0 -= P1	// diff := quant - pitch
+	s3 := 0xaaaaab	// (2^27)/12
+	s3 *xs= P0	// * diff (cpy)
+	P0 += P3	// note_frac + diff
+// note pwm
+	s4 := mem[@n_lfsr_ds]	// get pwm (audio noise)
+	P4 := nsb(s4)	// logically differentiate
+	s4 *xu= P3	// pwm * (2^27)/12 (cpy)
+	P0 += P4	// note quant + pwm
+	s7 := pc := @note_oct	// <=> note_oct()
+	P0 := 1 << s0	// note one-hot
+	P2 |= P0	// combine note & ctr
+// octave 7-seg decode	
+	s0 := P1	// move oct
+	s7 := pc := @hex_to_7seg	// <=> hex_to_7seg()
+	P0 <<= 16	// oct position
+	P2 |= P0	// combine
+// vol pwm
+	s3 := 0xc0000000	// 1/4
+	P6 -u= P3	// vol - 1/4
+	P6 := lim(s6)	// lim
+	P4 >>= 4	// pwm/4 (1/4 range * 1/4 leds)
+	P6 += P4	// (vol - 1/4) + pwm/4
+	P6 >>= 28	// msbs (truncate to 4 leds)
+	P6 := 1 << s6	// one hot
+	P6--	// bar graph
+	P6 <<= 12	// vol position
+	P2 |= P6	// combine
+// brightness & reg write
+	s7 := pc := @tuner_brit_wr	// <=> tuner_brit_wr()
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// HEX_TO_7SEG(0:in, 7:rtn | 0:out) 
+// convert hex nibble to 7 segment
+@hex_to_7seg {	s1 := 0xf	// ** HEX_TO_7SEG() START **  mask
+	P0 &= P1	// mask nibble
+	s1 := @7seg_ds	// 7 seg base address
+	P1 += P0	// addr offset
+	s0 :bu= mem[P1]	// get 7 seg
+	pc := P7 	// => RETURN
+@7seg_ds	mem[1] :b= ( 0x3f ) 	// 0
+	mem[1] :b= ( 0x06 )	// 1 
+	mem[1] :b= ( 0x5b )	// 2 
+	mem[1] :b= ( 0x4f )	// 3 
+	mem[1] :b= ( 0x66 )	// 4 
+	mem[1] :b= ( 0x6d )	// 5 
+	mem[1] :b= ( 0x7d )	// 6 
+	mem[1] :b= ( 0x07 )	// 7 
+	mem[1] :b= ( 0x7f )	// 8 
+	mem[1] :b= ( 0x6f )	// 9 
+	mem[1] :b= ( 0x77 )	// A 
+	mem[1] :b= ( 0x7c )	// b 
+	mem[1] :b= ( 0x58 )	// c 
+	mem[1] :b= ( 0x5e )	// d 
+	mem[1] :b= ( 0x79 )	// E 
+	mem[1] :b= ( 0x71 ) }	// F   ** SUB END **
+
+	
+// NOTE_OCT(0:pitch, 7:rtn | 0:note, 1:oct) 
+// unsigned int input 5.27
+@note_oct {	s1 := s0 >> 27	// ** NOTE_OCT() START **  oct
+	P0 <<= 5	// oct_frac
+	s2 := 12
+	P0 *xu= P2	// note := oct_frac *xu 12
+	pc := P7 }	// => RETURN  ** SUB END **
+	
+	
+// QUANT_SQ(0:in, 4:sq, 7:rtn | 0:out) 
+// quantize unsigned input using repeated squaring
+// unsigned I/O (frac)
+@quant_sq {	(s4 != 0) ? pc := @cont	// (sq != 0) ?  ** QUANT_POW() START ** 
+	pc := P7, P4	// => RETURN
+@cont	s1 := s0 >>> 31	// full MSb
+	P0 ^= s1	// xor (fold top half down)
+	P0 <<= 1	// * 2
+@loop	P4--	// <loop start> idx--
+	P0 *xu= s0	// sq
+	(s4 != 0) ? pc := @loop	// <loop end>
+	P0 >>= 1	// / 2
+	P0 ^= P1	// xor
+	pc := P7, P4 }	// => RETURN  ** SUB END **
+
+	
+// TUNER_OFFS(0:pitch_i, 2:note, 3:oct, 7:rtn | 0:pitch_o) 
+// linear note and octave offset for tuner (modulo)
+// unsigned int I/O 5.27
+@tuner_offs {	s4 := 0xaaaaab	// ** TUNER_OFFS() START **
+	P2 *= P4	// note offset
+	P0 += P2	// sum
+	P3 <<= 27	// oct offset
+	P0 += P3	// sum
+	pc := P7 }	// => RETURN  ** SUB END **
+
+	
+// TUNER_BRIT_WR(2:data, 5:brit, 7:rtn | -) 
+// if (brit change) && (!brit) : data := 0, send
+// if (brit change) && (brit)  : data := brit_wr, send
+// if (!brit change) && (brit) : send
+// brit_wr:
+// set mode bit [24]
+// copy brit[7:0] to [15:8} and [23:16]
+// write result to tuner register
+@tuner_brit_wr {	s3 :bu= mem[@brit_ds]	// get old brit  ** TUNER_BRIT_WR() START **
+	mem[@brit_ds] :b= s5	// sto new brit
+	(P3 == s5) ? pc := @br_nch	// (old == new) ?
+	(s5 != 0) ? pc := @br_nz	// (brit != 0) ?
+@done	reg[`reg_tuner] := P5	// reg := brit
+	pc := P7, P2	// => RETURN
+@br_nz	s1 := 1 << 8	// mode bit
+	P1 |= s5	// | brit
+	P1 <<= 8	// << 8
+	P1 |= s5	// | brit	
+	P1 <<= 8	// << 8
+	P5 |= P1	// | brit
+	pc := @done	// => done
+@br_nch	(P5 != 0) ? pc := @br_nch_nz	// (brit != 0) ?
+	pc := P7, P2	// => RETURN
+@br_nch_nz	s5 := s2	// brit := data
+	pc := @done	// => done
+@brit_ds {	mem[1] :b= ( 0 ) } }	// ** BRIT_DS **  ** SUB END **
+
+
+
+
+// TUNER_BLINK(2:in, 7:rtn | 2:out) 
+// blink center led when acal or preset write pending
+// acal blink rate is 2Hz 50/50 duty cycle
+// wr pend blink is more complex pattern
+@tuner_blink {	s0 :bu= mem[@wr_st_ds]	// get wr_st[0:1]  ** TUNER_BLINK() START **
+	s1 := reg[`reg_time]	// get time
+	s1 >>= 23	// [23] @ lsb (cpy)
+	P0 &= P1	// wr_st & time[24]
+	P1 >>= 25	// [25] @ lsb
+	P0 &= P1	// wr_st & time[24] & time[25]
+	s3 :hu= mem[@acal_timer_ds]	// get acal_timer_ds
+	P3 *= 437	// timer * 437 (~(2^14)/37.5)
+	P3 >>= 19	// [19] to lsb
+	P3 &= 1	// mask lsb
+	P0 |= P3	// wr_st blink | timer blink
+	P2 ^= P0	// blink	
+	pc := P7 }	// => RETURN  ** SUB END **

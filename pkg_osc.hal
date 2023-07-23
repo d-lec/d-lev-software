@@ -1,0 +1,191 @@
+
+// PM_POLY(0:inc, 7:rtn | 0:inc, 1:poly) 
+// phase modulation unit harmonic level 2nd order polynomial
+// input should NOT be A8 scaled! Full scale in = A8.
+// 6 cycles
+@pm_poly {	s1 := ~s0	// ~inc  ** PM_POLY() START **
+	P1 *xu= s1	// (~inc)^2
+	P1 >>= 1	// ((~inc)^2)/2
+	s2 := 0xccccccc	// 0.05
+	P1 += P2	// (((~inc)^2)/2) + 0.05
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// INC_OCT(0:inc, 1:oct, 7:rtn | 0:out)
+// shift inc via oct
+// 4 cycles max
+@inc_oct {	P0 <<= s1	// inc << oct  ** INC_OCT() START ** 
+	(P1 < 0) ? pc := @noct	// (oct < 0) ? skip lim
+	P0 := lim(s0)	// lim
+@noct	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// INC_OCT_MUL_ADD(0:inc, 1:oct, 2:mul, 3:add, 7:rtn | 0:out)
+// *mul, shift via oct, +add
+// 5 +4 = 9 cycles max
+@inc_oct_mul_add {	P0 *xu= P2	// *mul  ** INC_OCT_MUL_ADD() START ** 
+	s7 := pc := @inc_oct	// <=> inc_oct()
+	P0 +us= P3	// +add
+	P0 := lim(s0)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+
+// SIN_UNIT(0:inc, 1:pm_i, 6:addr, 7:rtn | 0:out, 6:addr)
+// sin unit with phase modulation input
+// mem[s6]   := nco
+// 6 +16 = 22 cycles
+@sin_unit {	s2 := mem[s6]	// get nco  ** SIN_UNIT() START **
+	P0 += P2	// inc + nco
+	mem[s6] := s0	// sto nco
+	P0 += P1	// phase := (inc + nco) + pm_i
+	s7 := pc := @sin2_int_lq	// <=> sin2_int_lq(phase)
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PM_UNIT(0:inc, 3:odd, 6:addr, 7:rtn | 1:pm_o, 6:addr)
+// phase modulion unit with variable all/odd harmonic content
+// mem[s6]   := nco
+// mem[s6+4] := old
+// 11 +22 = 33 cycles
+@pm_unit {	s7 := pc := @sin_unit	// <=> sin_unit()  ** PM_UNIT() START **
+	s1 := s0 >>> 1	// pm_all := sin/2 (cpy)
+	P0 *xs= s0	// pm_odd := sin^2
+// xmix
+	P0 *xsu= s3	// pm_odd * odd
+	P3 := ~s3	// ~odd
+	P1 *xsu= P3	// pm_all * ~odd
+	P1 += P0	// pm_mix := (pm_all * ~odd) + (pm_odd * odd)
+// comb
+	s0 := mem[s6+4]	// get old
+	mem[s6+4] := s1	// sto old
+	P1 += P0	// pm_o := mix + old
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// OSC_PM2(0:inc, 1:pm_i, 2:harm, 3:odd, 4:fm, 5:hmul, 6:addr, 7:rtn | 0:out)
+// phase modulated oscillator with variable all/odd harmonic content
+// has hmul input, employs pm_unit() and sin_unit()
+// 7040Hz (A8) max w/ 48kHz Fs
+// 32 bit audio output
+// mem[s6]    := nco (pm unit)
+// mem[s6+4]  := old (pm unit)
+// mem[s6+8]  := nco (sin unit)
+// mem[s6+12] := pm_o
+// 20 +6+33+22 = 80 cycles
+@osc_pm2 {	s7 := pc := @pm_poly	// <=> pm_poly()  ** OSC_PM2() START **
+	P2 *xu= P1	// harm * poly
+	s3 := s2 >> 2	// harm/4 (cpy)
+	P2 += P3	// (harm * poly) * 5/4 (odd/pm droop makeup)
+	s1 := 0x25891455	// A8
+	P0 *xu= P1	// inc * A8
+// pm_unit
+	s0 *= 2	// (inc * A8) * 2 (cpy)
+	P0 *xu= P5	// ((inc * A8) * 2) * hmul
+	s1 := mem[s6+12]	// get pm_o
+	s7 := pc := @pm_unit	// <=> pm_unit()
+	P1 *xsu= P2	// pm * ((harm * poly) * 5/4)
+// sin_unit
+	s5 := mem[s6+12]	// get pm_o
+	mem[s6+12] := P1	// sto pm_o
+	P1 *xsu= s4	// pm_i * fm
+	P4 := ~s4	// ~fm
+	P5 *xsu= P4	// pm_o * ~fm
+	P1 += P5	// pm := (pm_o * ~fm) + (pm_i * fm)
+	P6 += 8	// offset addr
+	s7 := pc := @sin_unit	// <=> sin_unit()
+	pc := P7, P6 }	// RETURN =>  ** SUB END **
+
+
+// OSC_PM1(0:inc, 1:pm_i, 2:harm, 3:odd, 4:fm, 6:addr, 7:rtn | 0:out)
+// phase modulated oscillator with variable all/odd harmonic content
+// no hmul input, employs pm_unit()
+// 7040Hz (A8) max w/ 48kHz Fs
+// 32 bit audio output
+// mem[s6]    := nco (pm unit)
+// mem[s6+4]  := old (pm unit)
+// mem[s6+8]  := pm (pm unit)
+// mem[s6+12] := pm_o
+// 20 +6+33+16 = 74 cycles
+@osc_pm1 {	s7 := pc := @pm_poly	// <=> pm_poly()  ** OSC_PM1() START **
+	P2 *xu= P1	// harm * poly
+	s3 := s2 >> 2	// harm/4 (cpy)
+	P2 += P3	// (harm * poly) * 5/4 (odd/pm droop makeup)
+	s1 := 0x25891455	// A8
+	P0 *xu= P1	// inc * A8
+	s1 := mem[s6+12]	// get pm_o
+	s7 := pc := @pm_unit	// <=> pm_unit()
+	mem[s6+8] := s1	// sto pm
+	P1 *xsu= P2	// pm * ((harm * poly) * 5/4)
+	s5 := mem[s6+12]	// get pm_o
+	mem[s6+12] := P1	// sto pm_o
+	P1 *xsu= s4	// pm_i * fm
+	P4 := ~s4	// ~fm
+	P5 *xsu= P4	// pm_o * ~fm
+	P1 += P5	// pm := (pm_o * ~fm) + (pm_i * fm)
+	s0 := mem[P6]	// get nco
+	P0 += P1	// phase := nco + pm
+	s7 := pc := @sin2_int_lq	// <=> sin2_int_lq(phase)
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// OSC_PP(0:inc, 2:harm, 6:addr, 7:rtn | 0:out)
+// pitch preview
+// exponential pitch inc input
+// 11 +74+30 = 115 cycles
+@osc_pp {	s1 := 0	// no pm_i  ** PREVIEW() START ** 
+	s3 := sgn(s2)	// sgn(harm)
+	P2 *= s3	// abs(harm)
+	P2 *= 2	// harm * 2
+	P3--	// odd := sgn--
+	s4 := 0	// fm := 0
+	s7 := pc := @osc_pm1	// <=> osc_pm1()
+	pc := P7 }	// RETURN =>
+
+
+// OSC_HARM_ODD(2:harm_i, 3:odd_i, 4:fm_i, 7:rtn | 2:harm_o, 3:odd_o, 4:fm_i)
+// perceptual linearization of harm & odd knobs for osc_pm()
+// 14 cycles
+@osc_harm_odd {	P3 := ~s3	// ~odd_i  ** OSC_HARM_ODD() START **
+	P3 *xu= s3	// (~odd_i)^2
+	P3 := ~s3	// odd_o := ~((~odd_i)^2)
+	s3 := nsb(s3)	// nsb(odd_o) (cpy)
+	P3 *xs= s3	// nsb(odd_o)^2
+	P3 *xu= s2	// (nsb(odd_o)^2) * harm
+	P3 := ~s3	// ~((nsb(odd_o)^2) * harm)
+	s4 := nsb(s4)	// nsb(fm_i) (cpy)
+	P4 *xs= s4	// nsb(fm_i)^2
+	P4 >>= 1	// (nsb(fm_i)^2)/2
+	P4 := ~s4	// ~((nsb(fm_i)^2)/2)
+	P2 *xu= P3	// harm_i * ~((nsb(odd_o)^2) * harm)
+	P2 *xu= P4	// harm_o := (harm_i * ~((nsb(odd_o)^2) * harm)) * ~((nsb(fm_i)^2)/2)
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+	
+// OSC_XMIX(0:in_0, 4:xmix, 5:in_1, 7:rtn | 0:out) 
+// non-linearly crossfades 2 signed inputs together
+// 0: osc_0
+// 1: osc_1 + osc_2
+// can't ofl/ufl
+// expects xmix[0:31](fs)
+// 6 cycles max
+@osc_xmix {	P4 := ~s4	// ~xmix  ** OSC_XMIX() START **
+	s4 *xu= s4	// (~xmix)^2 (cpy)
+	s3 := P4 >> 1	// ((~xmix)^2)/2
+	P4 >>= 1	// (~xmix)/2
+	P4 += P3	// mix := comb
+	P0 *xsu= s4	// in_0 * mix
+	P4 := ~s4	// ~mix
+	P5 *xsu= P4	// in_2 * ~mix
+	P0 += P5	// comb
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+	
+// INIT_MEM(4:addr_start, 5:addr_end, 7:rtn | -)
+// zeros out mem from start address to end address, inclusive
+@init_mem {	s0 := 0	// 0  ** INIT_MEM() START **
+@loop	(s5 <u s4) ? pc := @done	// (addr_end < addr_start) ? <loop start> 
+	mem[s4] := s0	// mem[addr_start] := 0
+	P4 +u= 4	// addr_start += 4
+	pc := @loop	// chk idx <loop end>
+@done	P5 P4 P0 	// clean
+	pc := P7 }	// RETURN =>  ** SUB END **

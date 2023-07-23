@@ -1,0 +1,107 @@
+//////////////////////////////////////////////////////////
+// THD 1 : Volume axis processing & envelope generation //
+//////////////////////////////////////////////////////////
+@xsr_1 {	s0 := reg[`reg_volume]	// get volume number  ** XSR 1 START **
+// S_P2 (P<>V)
+	s4 := mem[@s_p2_ds]	// get P<>V[0:3]
+	P4 &= 2	// isolate bit[1]
+	(P4 == 0) ? pc := @nswp	// (P<>V[1] == 0) ?
+	P0 := reg[`reg_pitch]	// get pitch number
+// S_P0 (50Hz)
+@nswp	s4 := mem[@s_p0_ds]	// get 50Hz[0:1] 
+	s1 := 0x4051e92	// w := 120Hz
+	s6 := @v_hum_filt_ds	// v_hum_filt_ds addr
+	s7 := pc := @hum_filt	// <=> hum_filt()
+	mem[@v_flt_ds] := s0	// sto v_flt (for ACAL)
+//  P0 (Vcal)
+	s5 := mem[@v_p0_ds]	// get Vcal[-127:127](fs_sq)
+	P5 >>>= 6	// scale Vcal
+	s4 := mem[@v_nul_ds]	// get v_nul
+	P4 +us= P5	// v_nul + Vcal
+	P4 := lim(s4)	// lim(v_nul + Vcal)
+	P4 -u= P0	// lim(v_nul + Vcal) - v_flt
+	s0 := lim(P4)	// lim(lim(v_nul + Vcal) - v_flt)
+@nz	s7 := pc := @ufrac_to_f	// <=> ufrac_to_f()
+// P1 (Lin)
+	s4 := mem[@v_p1_ds]	// get Lin[-15:15]
+	P4 +s= 32	// offset
+	P4 <<= 25	// scale 1/4 +/- 1/8
+	s7 := pc := @ufrac_to_f_hi	// <=> ufrac_to_f_hi()
+	P6 *s= -1	// neg
+	s7 := pc := @pow_f_lq	// <=> pow_f_lq()
+// P2 (Ofs-)
+	s4 := mem[@v_p2_ds]	// get Ofs-[0:127](fs)
+	s7 := pc := @ufrac_to_f_hi	// <=> ufrac_to_f_hi()
+	P5 +s= 4	// exp + 4 (U4.3)
+	P6 *s= -1 	// -sgn  
+	s7 := pc := @add_f	// <=> add_f()
+// P3 (Sens)
+	s4 := mem[@v_p3_ds]	// get Sens[-127:127](fs_sq)
+	s7 := pc := @frac_to_f_hi	// <=> frac_to_f_hi()
+	s0 := s0	// mag (cpy, drp := mag)
+	s1 := s1	// exp (cpy)
+	s2 *s= s6	// sgn * sgn (cpy)
+	s7 := pc := @f_to_ufrac	// <=> f_to_ufrac() (drp)
+// P4 (Drop)
+	s3 := mem[@v_p4_ds]	// get Drop[0:31](fs)
+	P3 *xu= P0	// Drop * drp
+	P3 *xu= s3	// (Drop * drp)^2
+	P2 *s= -1	// -in
+	s7 := pc := @mul_f	// <=> mul_f() (Sens * -in)
+// P5 (Ofs+)
+@vrev_nz	s4 := mem[@v_p5_ds]	// get Ofs+[0:127](fs)
+	s7 := pc := @ufrac_to_f_hi	// <=> ufrac_to_f_hi()
+	P5 +s= 1	// exp + 1 (U1.6)
+	s7 := pc := @add_f	// <=> add_f()
+	s7 := pc := @f_to_ufrac	// <=> f_to_ufrac()
+// velocity filter
+	s7 := pc := @vol_bpf	// <=> vol_bpf()
+	s0 := s0	// cpy
+// P6 (dloc),  P5 (damp)
+	s1 := mem[@e_p6_ds]	// get dloc[0:63](fs)
+	s2 := mem[@e_p5_ds]	// get damp[0:63]
+	s7 := pc := @vol_damp	// <=> vol_damp()
+	P0 -u= P3	// v - (Drop * drp)^2
+	P0 := lim(s0)	// lim
+	mem[@v_raw_ds] := s0	// sto v_raw (retain for below)
+////////////////////////
+// Envelope generator //
+////////////////////////
+// P0 (kloc), P1 (knee), P4 (velo)
+	s1 := mem[@e_p0_ds]	// get kloc[0:63](fs)
+	s4 := mem[@e_p1_ds]	// get knee[0:31](inv_rev)
+	s5 := mem[@e_p4_ds]	// get velo[0:31](48dB)
+	s7 := pc := @vol_vel_knee	// <=> vol_vel_knee()
+	mem[@v_pre_ds] := s0	// sto v_pre
+// P2 (fall)
+	s1 := mem[@e_p2_ds]	// get fall[0:63](84db_rev_dn_n)
+	P1 *xu= P2	// fall * v_damp
+	P1 := ~s1	// ~(fall * v_damp)
+	P1 >>= 7	// scale fall (1.3ms per 98dB min)
+// P3 (rise)
+	s2 := mem[@e_p3_ds]	// get rise[0:63](72db_rev)
+	P2 >>= 7	// scale rise (1.3ms per 98dB min)
+	s7 := pc := @env_ad	// <=> env_ad()
+// P7 (cvol)
+	s1 := mem[@e_p7_ds]	// get cvol[0:31](48db_dn)
+	s0 := mem[@p_lin_ds]	// get p_lin
+	s7 := pc := @vol_cvol	// <=> vol_cvol()
+// limit minimum vol
+	(s0 < 0) ? pc := @ampl_ok	// (ampl < 0) ? (checking msb here for > -96dB)
+	P0 := 1 << 31	// -96dB min
+// output
+@ampl_ok	mem[@v_lin_ds] := s0	// sto v_lin
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	mem[@v_exp_ds] := P0 	// sto v_exp
+	pc :i= P7 }	// => IRETURN  ** XSR END **
+
+////////////////
+// data store //
+////////////////
+@v_hum_filt_ds {	mem[16] := ( 0 ) }	// ** V_HUM_F_DS **
+@v_flt_ds {	mem[1] := ( 0 ) }	// ** V_FLT_DS **
+@v_nul_ds {	mem[1] := ( 0 ) }	// ** V_NUL_DS **
+@v_raw_ds {	mem[1] := ( 0 ) }	// ** V_RAW_DS **
+@v_pre_ds {	mem[1] := ( 0 ) }	// ** V_PRE_DS **
+@v_lin_ds {	mem[1] := ( 0 ) }	// ** V_LIN_DS **
+@v_exp_ds {	mem[1] := ( 0 ) }	// ** V_EXP_DS **

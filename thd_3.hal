@@ -1,0 +1,116 @@
+/////////////////////////
+// THD 3 : Oscillators //
+/////////////////////////
+//////////
+// INIT //
+//////////
+@xsr_3 {	s0 :hu= mem[@pre_init_ds]	// get pre_init  ** XSR 3 START **
+	(P0 == 0) ? pc := @fz	// (init == 0) ?
+	s4 := @o_osc0_ds	// start addr
+	s5 := @o_out_ds	// end addr
+	s7 := pc := @init_mem	// <=> init_mem()
+	pc :i= P7	// => IRETURN
+////////////
+// COMMON //	
+////////////
+@fz	s0 := mem[@p_exp_ds]	// exp0 : get exp pitch
+	s0 := s0	// exp1
+	s0 := s0	// exp2
+// pm (fm) interconnect
+	s1 := mem[@o_osc1_ds+12]	// pm1
+	P1 >>>= 1	// pm1/2
+	s2 := mem[@o_osc2_ds+12]	// pm2
+	P2 >>>= 1	// pm2/2
+	P1 += P2	// pm0 = pm1/2 + pm2/2
+	s1 := mem[@o_osc0_ds+12]	// pm1 := pm0
+	s1 := mem[@o_osc0_ds+12]	// pm2 := pm0
+// P2 (harm), P4 (vmod), P3 (pmod)
+	s2 := mem[@o_p2_ds]	// get harm[0:31](fs)
+	s3 := mem[@o_p4_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@o_p3_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @osc_harm_mod	// <=> osc_harm_mod()
+// P1 (odd), P8 (fm)
+	s3 := mem[@o_p1_ds]	// get odd[0:31](fs)
+	s4 := mem[@o_p8_ds]	// get fm[0:31]
+	s7 := pc := @osc_harm_odd	// <=> osc_harm_odd()
+	s2 := s2	// harm1
+	s2 := s2	// harm2
+	s3 := s3	// odd1
+	s3 := s3	// odd2
+	s4 := s4	// fm1
+	s4 := s4	// fm2
+//////////
+// OSC2 //
+//////////
+// P5 (oct), P18 (offs), P19 (sprd)
+	s1 := mem[@o_p5_ds]	// get oct[-7:7]
+	s2 := mem[@o_p18_ds]	// get offs[-127:127](plat3cux)
+	s3 := mem[@o_p19_ds]	// get sprd
+	P1++	// oct++
+	s4 := 0x13C6EF4	// gr := 0.6180339887/256 (golden ratio-1)/256
+	P3 *xu= P4	// sprd * gr
+	P3 := ~s3	// ~(sprd * gr)
+	s7 := pc := @inc_oct_mul_add	// <=> inc_oct_mul_add()
+// P17 (hmul)
+	s5 := mem[@o_p17_ds]	// get hmul[-127:127](plat3cux)
+	s6 := @o_osc2_ds	// ds addr
+	s7 := pc := @osc_pm2	// <=> osc_pm2()
+	s5 := P0 >>> 1	// out2/2 (mov)
+//////////
+// OSC1 //
+//////////
+// P5 (oct), P6 (offs), P19 (sprd)
+	s1 := mem[@o_p5_ds]	// get oct[-7:7]
+	s2 := mem[@o_p6_ds]	// get offs[-127:127](plat3cux)
+	s3 := mem[@o_p19_ds]	// sprd
+	P1++	// oct++
+	P3 >>= 7	// sprd/128
+	s7 := pc := @inc_oct_mul_add	// <=> inc_oct_mul_add()
+// P16 (hmul)
+	s5 := mem[@o_p16_ds]	// get hmul[-127:127](plat3cux)
+	s6 := @o_osc1_ds	// ds addr
+	s7 := pc := @osc_pm2	// <=> osc_pm2()
+	P0 >>>= 1	// out1/2
+	P5 += P0	// out2/2 + out1/2
+//////////
+// OSC0 //
+//////////
+// P5 (oct)
+	s1 := mem[@o_p5_ds]	// get oct[-7:7]
+	s7 := pc := @inc_oct	// <=> inc_oct()
+	s6 := @o_osc0_ds	// ds addr
+	s7 := pc := @osc_pm1	// <=> osc_pm1()
+// P7 (xmix)
+	s4 := mem[@o_p7_ds]	// get xmix[0:31](fs)
+	s7 := pc := @osc_xmix	// <=> osc_xmix()
+/////////	
+// vol //
+/////////	
+// P0 (osc)
+	s4 := mem[@o_p0_ds]	// get osc[0:63](48db)
+	P0 *xsu= P4	// * osc
+	s4 := mem[@v_exp_ds]	// get exp(vol)
+	P0 *xsu= P4	// * exp(vol)
+///////////////////
+// bass & treble //
+///////////////////
+// P15 (treb)
+	s2:= mem[@o_p15_ds]	// get treb[-32:31](fs)
+	s6 := @o_treb_ds	// addr
+	s7 := pc := @eq_treb	// <=> eq_treb()
+// P14 (bass)
+	s2:= mem[@o_p14_ds]	// get bass[-32:31](fs)
+	s6 := @o_bass_ds	// addr
+	s7 := pc := @eq_bass	// <=> eq_bass()
+	mem[@o_out_ds] := P0 	// sto out
+	pc :i= P7 }	// => IRETURN  ** XSR END **
+////////////////
+// data store //
+////////////////
+// KEEP THESE SEQUENTIAL!
+@o_osc0_ds {	mem[4] := ( 0 ) }	// ** O_OSC0_DS **
+@o_osc1_ds {	mem[4] := ( 0 ) }	// ** O_OSC1_DS **
+@o_osc2_ds {	mem[4] := ( 0 ) }	// ** O_OSC2_DS **
+@o_bass_ds {	mem[2] := ( 0 ) }	// ** O_BASS_DS **
+@o_treb_ds {	mem[2] := ( 0 ) }	// ** O_TREB_DS **
+@o_out_ds {	mem[1] := ( 0 ) }	// ** O_OUT_DS **

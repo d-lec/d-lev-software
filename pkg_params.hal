@@ -1,0 +1,1382 @@
+
+// PARAM_ENC(4:param_addr, 7:rtn | 0:enc_val, 4:param_addr) 
+// return enc value given parameter addr
+@param_enc {
+	s0 :bu= mem[s4+4]	// get enc_val (uns)   ** PARAM_ENC() START **
+	s2 :bs= mem[s4+5]	// get type (sgn)
+	(P2 !< 0) ? pc := @uns	// (type !< 0) ? uns
+	P0 :bs= mem[s4+4]	// get enc_val (sgn)
+@uns	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// PARAM_MIN_MAX(4:param_addr, 7:rtn | 1:enc_min, 2:enc_max, 4:param_addr) 
+// return encoder min & max values given parameter addr
+@param_min_max {	s1 := 0	// enc_min := 0  ** PARAM_MIN_MAX() START **
+	s2 :bs= mem[s4+5]	// enc_max := type (sgn)
+	(s2 < 0) ? pc := @_sgn	// (type < 0) ? sgn
+// ------------
+// - UNSIGNED -
+// ------------
+// (enc < 0x20) ? uint
+	s3 := 0x20	// hi limit
+	(s2 !<u P3) ? pc := @_upow	// (type !< 0x20) ? skip
+	pc := P7	// => RETURN
+// (enc < 0x70) ? uns_pow
+@_upow	s3 := 0x70	// hi limit
+	(s2 !<u P3) ? pc := @_ffrq	// (type !< 0x70) ? skip
+	P2 &= 0x3	// type & 0x3
+	P2 += 5	// (type & 0x3) + 5
+	P2 := 1 << s2	// enc_max := 1 << ((type & 0x3) + 5)
+	P2--	// enc_max--
+	pc := P7	// => RETURN
+// (enc < 0x72) ? filt_freq
+@_ffrq	s3 := 0x72	// hi limit
+	(s2 !<u P3) ? pc := @_rfrq	// (type !< 0x72) ? skip
+	P2 := 192	// enc_max := 192
+	pc := P7	// => RETURN
+// (enc == 0x72) ? reson_freq
+@_rfrq	s3 := 0x72	// type
+	(s2 != P3) ? pc := @_db	// (type != 0x72) ? skip
+	P2 := 127	// enc_max := 127
+	pc := P7	// => RETURN
+// (enc < 0x78) ? db
+@_db	s3 := 0x78	// hi limit
+	(s2 !<u P3) ? pc := @_wait	// (type !< 0x78) ? skip
+	P2 := 63	// enc_max := 63
+	pc := P7	// => RETURN
+// (enc == 0x7d) ? wait
+@_wait	s3 := 0x7d	// type
+	(s2 != P3) ? pc := @_ld_st	// (type != 0x7d) ?
+	P2 := 99	// enc_max := 99
+	pc := P7	// => RETURN
+// (enc == 0x7e) ? load & stor (& Auto)
+@_ld_st	s3 := 0x7e	// type
+	(s2 != P3) ? pc := @_ui_pg	// (type != 0x7e) ?
+	P2 := 249	// enc_max := 249
+	pc := P7	// => RETURN
+// (enc == 0x7f) ? ui_page
+@_ui_pg	s3 := 0x7f	// type
+	(s2 != P3) ? pc := @rtn	// (type != 0x7f) ?
+	P2 := 19	// enc_max := 19  ** !!SET TOTAL NUMBER OF UI PAGES -1 HERE!! **
+@rtn	pc := P7	// => RETURN
+// ----------
+// - SIGNED -
+// ----------
+@_sgn	P2 &= 0xff	// type sgn => uns
+// (enc < 0xa0) ? int
+	s3 := 0xa0	// hi limit
+	(s2 !<u P3) ? pc := @_eq	// (type !< 0xa0) ? skip
+	P2 &= 0x1f	// enc_max := type & 0x1f
+	P1 := ~s2	// enc_min := ~max
+	pc := P7	// => RETURN
+// (enc < 0xc0) ? eq
+@_eq	s3 := 0xc0	// hi limit
+	(s2 !<u P3) ? pc := @_eqpow	// (type !< 0xc0) ? skip
+	P2 &= 0x1f	// enc_max := type & 0x1f
+	pc := @dup_rtn	// => dup_rtn
+// (enc < 0xf0) ? eq_pow
+@_eqpow	s3 := 0xf0	// hi limit
+	(s2 !<u P3) ? pc := @_cupl	// (type !< 0xf0) ? skip
+	P2 &= 0x3	// type & 0x3
+	P2 += 4	// (type & 0x3) + 4
+	P2 := 1 << s2	// enc_max := 1 << ((type & 0x3) + 4)
+	P2--	// enc_max--
+	pc := @dup_rtn	// => dup_rtn
+// (enc == 0xf0) ? cube_plat_exp
+@_cupl	s3 := 0xf0	// type
+	(s2 != P3) ? pc := @_resr	// (type != 0xf0) ? skip
+	P2 := 127	// enc_max := 127
+	pc := @dup_rtn	// => dup_rtn
+// (enc < 0xf3) ? reson_reso | form_levl
+@_resr	s3 := 0xf3	// hi limit
+	(s2 !<u P3) ? pc := @_midicc	// (type !< 0xf3) ? skip
+	P2 := 63	// enc_max := 63
+	pc := @dup_rtn	// => dup_rtn
+// (enc == 0xfc) ? midi_cc
+@_midicc	s3 := 0xfc	// type
+	(s2 != P3) ? pc := @_cent	// (type != 0xfc) ? skip
+	P2 := 31	// enc_max := 31
+	P1 := -127	// enc_min := -127
+	pc := P7	// => RETURN
+// (enc == 0xfd) ? cent
+@_cent	s3 := 0xfd	// type
+	(s2 != P3) ? pc := @dup_rtn	// (type != 0xfd) ? skip
+	P2 := 99	// enc_max := 99
+@dup_rtn	P1 := s2 * -1	// enc_min := -max
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// PARAM_STR_CPY(4:param_addr, 6:str_addr, 7:rtn | 4:param_addr, 6:str_addr) 
+// copy label value and formatted display value to string addr
+@param_str_cpy {	s2 :bu= mem[s4+5]	// get param type  ** PARAM_STR_CPY() START **	
+	s3 := 0x7f	// type
+	(s2 == P3) ? pc := @menu	// (type == 0x7f) ?
+	s0 := s4 + 6	// lbl offs
+	s1 := 4	// 4 chars
+	s7 := pc := @mem_to_str	// <=> mem_to_str()
+	s0 := ' '	// ' '
+	s7 := pc := @str_push	// <=> str_push()
+	s3 := 0x70	// type
+	(s2 == P3) ? pc := @48db_freq	// (type == 0x70) ?
+	s3 := 0x71	// type
+	(s2 == P3) ? pc := @48db_freq_exp	// (type == 0x71) ?
+	s3 := 0x72	// type
+	(s2 == P3) ? pc := @reson_f	// (type == 0x72) ?
+	s7 := pc := @param_enc	// (DEFAULT!) <=> @param_enc() get enc_val
+	pc := @to_str_rtn	// => to_str_rtn
+@menu {	s0 := @menu_pg_titles	// base addr
+	s1 := 9	// page titles are 9 chars
+	s2 := mem[@menu_page_ds]	// get menu page
+	P2 *u= s1	// mult
+	P0 +u= P2	// offs
+	s7 := pc := @mem_to_str	// <=> mem_to_str()
+	pc := P7, P2 }	// => RETURN
+@48db_freq {	s0 := mem[s4]	// get use_val
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq(use_val)
+	s3 := 7041	// A8 (+1 for round up)
+	P0 *xu= P3	// exp2(use_val) * A8
+	pc := @to_str_rtn }	// => to_str_rtn
+@48db_freq_exp {	s0 :bu= mem[s4+4]	// get enc_val (uns)
+	s7 := pc := @enc_freq	// <=> enc_freq()
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	s3 := 7041	// A8 (+1 for round up)
+	P0 *xu= P3	// exp2(enc_val) * A8
+	pc := @to_str_rtn }	// => to_str_rtn
+@reson_f {	s0 := mem[s4]	// get use_val
+	s7 := pc := @inv_uint	// <=> inv_uint()
+	s1 := 48001	// 48k (+1 for round up)
+	P0 *xu= P1	// 48k / use_val
+	pc := @to_str_rtn }	// => to_str_rtn
+@to_str_rtn	s7 := pc := @int16_to_bcd4_str	// <=> @int16_to_bcd4_str()
+	pc := P7, P2 }	// => RETURN  ** SUB END **
+
+
+// PARAM_USE_UPD(4:param_addr, 7:rtn | 4:param_addr) 
+// calc & update parameter use value given parameter addr
+@param_use_upd {	s2 :bs= mem[s4+5]	// get type (sgn)  ** PARAM_USE_UPD() START **
+	(s2 < 0) ? pc := @signed	// (type < 0) ? signed
+// ------------
+// - UNSIGNED -
+// ------------
+	s0 :bu= mem[s4+4]	// get enc_val (uns)
+// (enc < 0x24) ? uns
+	s3 := 0x24	// hi limit
+	(s2 !<u P3) ? pc := @_ufs	// (type !< 0x24) ? skip
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0x28) ? uns_fs
+@_ufs	s3 := 0x28	// hi limit
+	(s2 !<u P3) ? pc := @_48db	// (type !< 0x28) ? skip
+	s7 := pc := @enc_fs	// <=> enc_fs()
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0x34) ? 48db_dn
+@_48db	s3 := 0x34	// hi limit
+	(s2 !<u P3) ? pc := @_inv	// (type !< 0x34) ? skip
+	s7 := pc := @enc_fs	// <=> enc_fs()
+	s3 := 4	// 4 * 12 = 48db
+	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0x48) ? inv & rev_inv
+@_inv	s3 := 0x48	// hi limit
+	(s2 !<u P3) ? pc := @_ffreq	// (type !< 0x48) ? skip
+	s3 := 0x44	// hi limit
+	(s2 <u P3) ? pc := @n_rinv	// (type < 0x44) ? not rev
+	s7 := pc := @enc_rev	// <=> enc_rev()
+@n_rinv	s7 := pc := @enc_fs	// <=> enc_fs()
+	P0 >>= 16	// 16.16 ufrac
+	s7 := pc := @inv_uint	// <=> inv_uint()
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0x72) ? filt_freq & filt_freq_exp2
+@_ffreq	s3 := 0x72	// hi limit
+	(s2 !<u P3) ? pc := @_rfreq	// (type !< 0x72) ? skip
+	s7 := pc := @enc_freq	// <=> enc_freq()
+	s3 := 0x70	// type
+	(s2 == P3) ? pc := @sto_rtn	// (type == 0x70) ? not exp
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	s1 := P0	// move
+	s7 := pc := @f2_poly	// <=> f2_poly()
+	s0 := P1	// move
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0x72) ? reso_freq
+@_rfreq	s3 := 0x72	// type
+	(s2 != P3) ? pc := @_damp	// (type != 0x72) ? skip
+	P0 <<= 25	// fs
+	s7 := pc := @reson_dly	// <=> reson_dly()
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0x73) ? p4_48db_dn_n (damp)
+@_damp	s3 := 0x73	// type
+	(s2 != P3) ? pc := @_r72	// (type != 0x73) ? skip
+	P0 <<= 26	// fs
+	P0 *xu= s0	// enc^2
+	P0 *xu= s0	// enc^4
+	s3 := 4	// 4 * 12 = 48db
+	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
+	P0 := ~s0	// not
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0x75) ? rev_72db (rise)
+@_r72	s3 := 0x75	// type
+	(s2 != P3) ? pc := @_r96	// (type != 0x75) ? skip
+	P0 <<= 26	// fs
+	P0 := ~s0	// ~fs
+	s3 := 6	// 6 * 12 = 72db
+	s7 := pc := @enc_exp2	// <=> enc_exp2()
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0x76) ? rev_96db (reso, fall)
+@_r96	s3 := 0x76	// type
+	(s2 != P3) ? pc := @sto_rtn	// (type != 0x76) ? skip
+	P0 <<= 26	// fs
+	P0 := ~s0	// ~fs
+	s3 := 8	// 8 * 12 = 96db
+	s7 := pc := @enc_exp2	// <=> enc_exp2()
+	P0 := ~s0	// not (for comb with damp)
+@sto_rtn	mem[s4] := P0	// sto use_val
+	pc := P7, P2	// => RETURN
+// ----------
+// - SIGNED -
+// ----------
+@signed	P2 &= 0xff	// type sgn => uns
+	s0 :bs= mem[s4+4]	// get enc_val (sgn)
+// (enc < 0xc4) ? sgn
+	s3 := 0xc4	// hi limit
+	(s2 !<u P3) ? pc := @_sfs	// (type !< 0xc4) ? skip
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0xc8) ? sgn_fs
+@_sfs	s3 := 0xc8	// hi limit
+	(s2 !<u P3) ? pc := @_sfssq	// (type !< 0xc8) ? skip
+	s7 := pc := @enc_fs	// <=> enc_fs()
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0xcc) ? sgn_fs_sq
+@_sfssq	s3 := 0xcc	// hi limit
+	(s2 !<u P3) ? pc := @_cuplx	// (type !< 0xcc) ? skip
+	s7 := pc := @enc_fs	// <=> enc_fs()
+	s7 := pc := @plat1_sq	// <=> plat1_sq()
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0xf0) ? cube_plat_exp
+@_cuplx	s3 := 0xf0	// type
+	(s2 != P3) ? pc := @_r72dr	// (type != 0xf0) ? skip
+	s7 := pc := @plat3_cube_exp	// <=> plat3_cube_exp()
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0xf1) ? rev_72db_dn_rev
+@_r72dr	s3 := 0xf1	// type
+	(s2 != P3) ? pc := @_s48db_dn	// (type != 0xf1) ? skip
+	s1 := sgn(s0)	// sgn
+	P0 *s= s1	// abs
+	P0 ^= 0x3f	// rev
+	P0 <<= 26	// fs
+	s3 := 6	// 6 * 12db = 72db
+	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
+	P0 := ~s0	// not
+	P0 >>= 1	// /2
+	P0 *= P1	// restore sgn
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0xf2) ? s48db_dn
+@_s48db_dn	s3 := 0xf2	// type
+	(s2 != P3) ? pc := @sto_rtn	// (type != 0xf2) ? skip
+	s1 := sgn(s0)	// sgn
+	P0 *s= s1	// abs
+	P0 <<= 26	// fs
+	s3 := 4	// 4 * 12db = 48db
+	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
+	P0 >>= 1	// /2
+	P0 *= P1	// restore sgn
+	pc := @sto_rtn } 	// sto_rtn  ** SUB END **
+
+
+// PLAT1_SQ(0:in, 7:rtn | 0:out) 
+// squared plateaus at:
+// sgn I/O: 0
+// uns I/O: 0, 1
+@plat1_sq {	s1 := s0 >>> 31	// full MSb  ** PLAT1_SQ() START **
+	P0 ^= s1	// xor
+	P0 *u= 2	// * 2
+	P0 *xu= s0	// ^2
+	P0 >>= 1	// / 2
+	P0 ^= P1	// xor
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PLAT3_CUBE(0:in, 7:rtn | 0:out) 
+// 3 cubed plateaus at:
+// sgn I/O: -1/2, 0, +1/2
+// uns I/O: 0, 1/2, 1
+@plat3_cube {	s1 := s0 >>> 31	// full MSb  ** PLAT3_CUBE() START **
+	P0 ^= s1	// xor (fold left up)
+	P0 *u= 2	// * 2
+	s1 := s0 >>> 31	// full MSb
+	P0 ^= s1	// xor (fold outer down)
+	P0 *u= 2	// * 2
+	s2 := s0	// cpy
+	P0 *xu= s2	// ^2
+	P0 *xu= P2	// ^3
+	P0 >>= 1	// / 2
+	P0 ^= P1	// xor (flip outer up)
+	P0 >>= 1	// / 2
+	P0 ^= P1	// xor (flip left down)
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PLAT3_CUBE_EXP(0:enc, 7:rtn | 0:out) 
+// ensure no long-term phase error
+// do exp2
+@plat3_cube_exp {	s1 := 127	// 127  ** PLAT3_CUBE_EXP() START **
+	(s0 != P1) ? pc := @n1	// (enc != 127) ?
+	P0 := -1	// -1
+	pc := P7	// => RETURN
+@n1	s1 := -127	// -127
+	(s0 != P1) ? pc := @nn1	// (enc != -127) ?
+	P0 := 1 << 30	// 1/4
+	pc := P7	// => RETURN
+@nn1	P0 <<= 24	// fs
+	s7 := pc := @plat3_cube	// <=> plat3_cube()
+	P0 >>>= 4	// scale (+/- 1/2)
+	s1 := 0xf8000000	// offs (1/2)
+	P0 +u= P1	// 
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// ENC_EXP2(0:enc_fs, 3:12db, 7:rtn | 0:out) 
+// enc_fs s/b full scale
+// 1. multiply and offset encoder value based on 12db
+// 2. do EXP2
+// some scaling values:
+// 12db  dB  mul (ext)    ofs
+// ----  --  -----------  -----------
+//    1  12  0x1000,0000  0xf000,0000
+//    2  24  0x2000,0000  0xe000,0000
+//    3  36  0x3000,0000  0xd000,0000
+//    4  48  0x4000,0000  0xc000,0000
+//    5  60  0x5000,0000  0xb000,0000
+//    6  72  0x6000,0000  0xa000,0000
+//    7  84  0x7000,0000  0x9000,0000
+//    8  96  0x8000,0000  0x8000,0000
+@enc_exp2 {	s3 <<= 28	// mul := 12db << 28 (cpy)  ** ENC_EXP2() START **
+	P0 *xu= P3	// enc_fs * mul
+	P3 := 16 -u s3	// 16 - 12db
+	P3 <<= 28	// ofs := (16 - 12db) << 28
+	P0 +u= P3	// (enc_fs * mul) + ofs
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	pc := P7 }	// => RETURN
+
+
+// ENC_EXP2_DN(0:enc_fs, 3:12db, 7:rtn | 0:out) 
+// enc_fs s/b full scale
+// offset value downward based on 12db (so enc_fs=0 => out=0)
+// some scaling values:
+// 12db  dB  ofs
+// ----  --  -----------
+//    1  12  0x4000,0000
+//    2  24  0x1000,0000
+//    3  36   0x400,0000
+//    4  48   0x100,0000
+//    5  60    0x40,0000
+//    6  72    0x10,0000
+//    7  84     0x4,0000
+//    8  96     0x1,0000
+@enc_exp2_dn {	s3 *us= -2	// 12db * -2 (cpy)  ** ENC_EXP2_DN() START **
+	P3 +su= 32	// (12db * -2) + 32
+	s4 := 1 << P3	// ofs := 1 << ((12db * -2) + 32) 
+	s7 := pc := @enc_exp2	// <=> enc_exp2()
+	P0 -u= P4	// exp2 - ofs
+	pc := P7 }	// => RETURN
+
+
+// ENC_FREQ(0:enc_i, 7:rtn | 0:enc_o) 
+// multiply and offset encoder value, [0:192], 48dB, 24 steps per octave & 8 octaves
+@enc_freq {	s3 := 0x555555	// mult (2^27) / 24  ** ENC_FREQ START **
+	P0 *u= P3	// enc_i * mult 
+	s4 := 0xc0000000	// ofs (27.5Hz, A0)
+	P0 += P4	// (enc_i * mult) + ofs
+	pc := P7 }	// => RETURN
+
+	
+// ENC_FS(0:enc_i, 2:param_type, 7:rtn | 0:enc_o, 2:param_type) 
+// make encoder value full scale based on type
+// min out is 0
+@enc_fs {	s2 &= 0x3	// type & 0x3 (cpy)  ** ENC_FS() START **
+	P2 := 27 - s2	// 27 - (type & 0x3)
+	P0 <<= P2	// enc_i << (27 - (type & 0x3))
+	pc := P7 }	// => RETURN
+
+	
+// ENC_REV(0:enc_i, 2:param_type, 7:rtn | 0:enc_o, 2:param_type) 
+// reverse encoder unsigned value based on type
+@enc_rev {	s2 &= 0x3	// type & 0x3 (cpy)  ** ENC_REV() START **
+	P2 += 5	// + 5
+	P2 := 1 << s2	// 1 << ((type & 0x3) + 5)
+	P2--	// form all ones mask of desired width
+	P0 ^= P2	// enc_i ^ mask
+	pc := P7 }	// => RETURN
+
+
+// PARAM_ENC_UPD(0:enc_idx, 4:param_addr, 7:rtn | 4:param_addr) 
+// given encoder idx and parameter address:
+// add encoder delta to parameter encoder value, limit, store
+// zero / max / min with pb press
+// out & store encs: skip pb action
+@param_enc_upd {	s3 :bu= mem[@pb_act_ds]	// get pb_act
+	s0 := 1 << s0	// pb_msk := 1 << enc_idx (cpy)
+	P3 &= P0	// pb_act & pb_msk
+// check pb
+	(P3 == 0) ? pc := @pb_skip	// (pb_act & pb_msk == 0) ?
+	s6 := @v_p7_ds	// param_addr Out
+	(s4 == P6) ? pc := @pb_done	// (param_addr == usr_stor) ? 
+	s6 := @ps_p1_ds	// param_addr usr_stor
+	(s4 == P6) ? pc := @pb_done	// (param_addr == usr_stor) ? 
+	s6 := @ps_p3_ds	// param_addr sys_stor
+	(s4 == P6) ? pc := @pb_done	// (param_addr == sys_stor) ? 
+	s7 := pc := @param_enc	// <=> param_enc()
+	s7 := pc := @param_min_max	// <=> param_min_max()
+	(s0 != s2) ? pc := @enc_nmax	// (enc != max) ? 
+	P0 := s1	// enc := min
+	pc := @pb_clean
+@enc_nmax	(s0 != 0) ? pc := @enc_nz	// (enc != 0) ?
+	P0 := s2	// enc := max
+	pc := @pb_clean
+@enc_nz	P0 := 0	// enc := 0
+@pb_clean	P2 P1	// clean
+	mem[s4+4] :b= P0	// sto enc_val
+@pb_done	pc := P7, P0	// => RETURN
+// check delta
+@pb_skip	s3 := @enc_delta_ds	// delta addr
+	P3 += P0	// addr + offset
+	P3 :bs= mem[s3]	// get delta
+	(s3 != 0) ? pc := @delta_nz	// (delta != 0) ? 
+	pc := P7, P3	// => RETURN
+@delta_nz	s7 := pc := @param_enc	// <=> param_enc()
+	P0 += P3	// enc := enc_delta + enc_val
+	s7 := pc := @param_min_max	// <=> param_min_max()
+	(s2 !<s s0) ? pc := @enc_nofl	// (max !< enc) ? 
+	P0 := s2	// enc := max
+@enc_nofl	(s0 !<s s1) ? pc := @enc_nufl	// (enc !< min) ?
+	P0 := s1	// enc := min
+@enc_nufl	P2 P1	// clean
+	mem[s4+4] :b= P0	// sto enc_val
+	pc := P7 }	// => RETURN  ** SUB END **
+
+	
+// PARAMS_PAGE_UPD(7:rtn | -) 
+// update menu page params w/ encoder values
+@params_page_upd {	s2 := 7	// loop idx (encoders -1)  ** PARAMS_PAGE_UPD() START **
+@loop	s0 := mem[@menu_page_ds]	// <loop start> get menu page
+	s1 := s2	// offs := loop idx
+	s7 := pc := @menu_param_ptr	// <=> menu_param_ptr(page,offs)
+	s0 := s2	// enc := loop idx
+	s7 := pc := @param_enc_upd	// <=> param_enc_upd()
+	s7 := pc := @param_use_upd	// <=> param_use_upd()
+	P2--	// idx--
+	(s2 !< 0) ? pc := @loop, P4	// <loop end> (clean ptr)
+	pc := P7, P2 }	// => RETURN  ** SUB END **
+
+
+// PARAMS_ADDRS(1:sys_f, 7:rtn | 4:start, 5:end) 
+// get start and end parameter addresses
+// sys_f: 
+// >0 : profile params
+//  0 : all params (including menu page, load, stor, Load, Stor)
+// <0 : preset params
+@params_addrs {	s4 := @s_p0_ds	// all params start addr  ** PARAMS_ADDRS() START **
+	s5 := @b_p0_ds	// all params end addr
+	(s1 < 0) ? pc := @pre	// (sys_f < 0) ? pre
+	(P1 == 0) ? pc := @all	// (sys_f == 0) ? all
+	P5 := @p_p7_ds	// profile params end addr
+@all	pc := P7	// => RETURN
+@pre	P4 := @o_p0_ds	// preset params start addr
+	pc := P7, P1 }	// => RETURN   ** SUB END **
+
+
+// PARAMS_USE_UPD(7:rtn | -) 
+// update param use values
+@params_use_upd {	s1 := 0	// sys_f := 0 (all params)  ** PARAMS_USE_UPD() START **
+	s7 := pc := @params_addrs	// <=> params_addrs()
+@loop	s7 := pc := @param_use_upd	// <loop start> <=> param_use_upd()
+	P4 += 10	// 10 byte stride
+	(s5 !<u s4) ? pc := @loop	// <loop end> (end !< start) ? 
+	P5 P4	// clean
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// PRE_PRO_LOAD(0:preset, 1:sys_f, 7:rtn | -) 
+// read preset / profile params from spi & update use
+@pre_pro_load {	s7 := pc := @spi_csn_hi	// <=> spi_csn_hi() (for safety)  ** PRE_PRO_LOAD() START **
+	(s1 < 0) ? pc := @pre	// (sys_f < 0) ? pre
+	P0 += 250	// preset + 250
+@pre	s7 := pc := @params_addrs	// <=> params_addrs()
+	P0 <<= 8	// addr := preset * 256
+	P0 := swp(s0)	// big <=> little
+	P0 |= 0x3	// | 0x3 (spi rd)
+	s7 := pc := @spi_w32	// <=> spi_w32()
+@loop	s7 := pc := @spi_rd	// <loop start> <=> spi_rd()
+	mem[s4+4] :b= P0	// sto val
+	P4 += 10	// 10 byte stride
+	(s5 !<u s4) ? pc := @loop	// <loop end> (end !< start) ? 
+	s7 := pc := @spi_csn_hi	// <=> spi_csn_hi()
+	s7 := pc := @params_use_upd	// <=> params_use_upd()
+	P4 := 1 << 10	// set pre_init
+	mem[@pre_init_ds] :h= P4	// sto pre_init
+	pc := P7, P5 }	// => RETURN   ** SUB END **
+
+// PRE_PRO_STOR(0:preset, 1:sys_f, 7:rtn | -) 
+// write preset / profile params to spi
+// preset input s/b signed
+@pre_pro_stor {	(s1 < 0) ? pc := @pre	// (sys_f < 0) ? pre  ** PRE_PRO_STOR() START **
+	P0 += 250	// preset + 250
+@pre	s7 := pc := @params_addrs	// <=> params_addrs()
+	s0 := 0x2	// unprotect presets
+	s7 := pc := @spi_wr_prot	// <=> spi_wr_prot()
+	s7 := pc := @spi_wr_en	// <=> spi_wr_en()
+	P0 <<= 8	// addr := preset * 256
+	P0 := swp(s0)	// big <=> little
+	P0 |= 0x2	// | 0x2 (spi wr)
+	s7 := pc := @spi_w32	// <=> spi_w32()
+@loop	s0 :bu= mem[s4+4]	// get val <loop start> 
+	s7 := pc := @spi_wr	// <=> spi_wr()
+	P4 += 10	// 10 byte stride
+	(s5 !<u s4) ? pc := @loop	// (end !< start) ? <loop end>
+	s7 := pc := @spi_wr_wait	// <=> spi_wr_wait()
+	s0 := 0x3	// write protect eeprom
+	s7 := pc := @spi_wr_prot	// <=> spi_wr_prot()
+	P5 P4	// clean
+	pc := P7 }
+
+	
+// PARAM_TO_STR(1:offs, 6:str_addr, 7:rtn | 6:str_addr) 
+@param_to_str {	s0 := mem[@menu_page_ds]	// get menu page  ** PARAM_TO_STR() START **
+	s7 := pc := @menu_param_ptr	// <=> menu_param_ptr(page,offs)
+	s7 := pc := @param_str_cpy	// <=> param_str_cpy()
+	pc := P7, P4 }	// => RETURN  ** SUB END **
+
+
+// LEFT_PARAM_TO_STR(1:offs, 6:str_addr, 7:rtn | 6:str_addr) 
+@left_param_to_str {	s7 := pc := @param_to_str	// <=> param_to_str()  ** LEFT_PARAM_TO_STR() START **
+	s0 := ' '	// ' '
+	s7 := pc := @str_push	// <=> str_push()
+	s0 := ' '	// ' '
+	s7 := pc := @str_push	// <=> str_push()
+	pc := P7 }	// => RETURN  ** SUB END **
+
+/*
+PARAMETER TYPES:
+==========================================================
+TYPE     ENC          USE                             DISP
+----     ---          ---                             ----
+00       [0:0]        -                               "   "
+----     ---          ---                             ----
+uint range
+01       [0:1]        ENC                             ENC
+02       [0:2], etc.
+1f       [0:31]
+----     ---          ---                             ----
+uint 2^n range
+20       [0:31]       ENC                             ENC
+21       [0:63]
+22       [0:127]
+23       [0:255] 
+----     ---          ---                             ----
+uint 2^n range, full scale
+24       [0:31]       ENC<<27                         ENC
+25       [0:63]       ENC<<26
+26       [0:127]      ENC<<25
+27       [0:255]      ENC<<24
+----     ---          ---                             ----
+uint 2^n range, mul, offs, exp2 (48dB, 256:1), offs
+30       [0:31]       (exp2((ENC*mul)+offs))-offs     ENC
+31       [0:63]       (exp2((ENC*mul)+offs))-offs
+32       [0:127]      (exp2((ENC*mul)+offs))-offs
+33       [0:255]      (exp2((ENC*mul)+offs))-offs
+----     ---          ---                             ----
+uint 2^n range, fs, >>16, inv
+40       [0:31]       inv(fs(ENC)>>16)                ENC
+41       [0:63]       
+42       [0:127]      
+43       [0:255]      
+----     ---          ---                             ----
+uint 2^n range, rev, fs, >>16, inv
+44       [0:31]       inv(fs(~ENC)>>16)               ENC
+45       [0:63]       
+46       [0:127]      
+47       [0:255]      
+==========================================================
+TYPE     ENC          USE                             DISP
+----     ---          ---                             ----
+uns, mul, offs, freq disp (48dB) (24 steps per octave, 8 octaves) (48dB freq, no exp2)
+70       [0:192]      (ENC*mul)+offs                  exp2(USE)*7041
+----     ---          ---                             ----
+uns, mul, offs, freq disp (48dB) (24 steps per octave, 8 octaves) (48dB freq)
+71       [0:192]      f2_poly(exp2((ENC*mul)+offs))   exp2((ENC*mul)+offs)*7041
+----     ---          ---                             ----
+uns, rev, poly, freq disp (resonator delay)
+72       [0:127]      (((((~(ENC<<25))^4)*0.871)+((~(ENC<<25))>>3))>>22)+4, DISP=48001/USE
+----     ---          ---                             ----
+uint 2^n range, ^4, mul, offs, exp2, offs, not (global damping)
+73       [0:63]       ~((exp2(((ENC^4)*mul)+offs))-offs)ENC
+----     ---          ---                             ----
+uint 2^n range, rev, mul, offs, exp2 (72dB, 2^12:1)
+75       [0:63]       exp2(((63-ENC)*mul)+offs)       ENC
+----     ---          ---                             ----
+uint 2^n range, rev, mul, offs, exp2 (96dB, 2^16:1), offs, not
+76       [0:63]       ~(exp2(((63-ENC)*mul)+offs))-offs)ENC
+----     ---          ---                             ----
+acal timer
+7d       [0:99]       ENC                             ENC
+----     ---          ---                             ----
+preset load & stor & Auto
+7e       [0:249]      ENC                             ENC
+----     ---          ---                             ----
+uns (UI menu type)
+7f       [0:19]       ENC                             menu text
+==========================================================
+TYPE     ENC          USE                             DISP
+----     ---          ---                             ----
+int range
+80       [-1:0]       ENC                             ENC
+81       [-2:1], etc.
+9f       [-32:31]
+----     ---          ---                             ----
+equal +/- range
+a1       [-1:1]       ENC                             ENC
+a2       [-2:2], etc.
+bf       [-31:31]
+----     ---          ---                             ----
+equal +/- 2^n range
+c0       [-15:15]     ENC                             ENC
+c1       [-31:31]
+c2       [-63:63]
+c3       [-127:127]
+----     ---          ---                             ----
+equal +/- 2^n range, full scale
+c4       [-15:15]     ENC<<27                         ENC
+c5       [-31:31]     ENC<<26
+c6       [-63:63]     ENC<<25
+c7       [-127:127]   ENC<<24
+----     ---          ---                             ----
+equal +/- 2^n range, full scale, square
+c8       [-15:15]     (ENC<<27)^2                     ENC
+c9       [-31:31]     (ENC<<26)^2
+ca       [-63:63]     (ENC<<25)^2
+cb       [-127:127]   (ENC<<24)^2
+==========================================================
+TYPE     ENC          USE                             DISP
+----     ---          ---                             ----
+equal +/- 2^n range, 3 cubic plateaus, exp2
+f0       [-127:127]   exp2(0xf8000000+(plat3(ENC<<24)>>>4)) ENC 
+----     ---          ---                             ----
+equal +/- 2^n range, rev, mul, offs, exp2, not (resonator reso 84dB)
+f1       [-63:63]                                     ENC
+----     ---          ---                             ----
+equal +/- 2^n range, mul, offs, exp2 (48dB, 256:1), offs
+f2       [-63:63]     (exp2((ENC*mul)+offs))-offs (form levl)
+----     ---          ---                             ----
+midi cc
+fc       [-127:31]    ENC                             ENC
+----     ---          ---                             ----
+cent
+fd       [-99:99]     ENC                             ENC
+==========================================================
+*/
+
+/////////////////
+// data stores //
+/////////////////
+`@pre_upd_ds {	mem[1] :b= ( 0 ) }	// ** PRE_UPD_DS **
+
+////////////////////////////
+//                        //
+//  SYSTEM PRESET PARAMS  //
+//                        //
+////////////////////////////
+@s_p0_ds {	mem[1] := ( 0 ) 	// use  ** S_P0_DS **  !!! SYSTEM PARAMS START !!!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x01 )	// type [0:1]
+	mem[4] :b= ( "50Hz" ) }	// lbl
+
+@s_p1_ds {	mem[1] := ( 1 ) 	// use  ** S_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x07 )	// type [0:7]
+	mem[4] :b= ( "Dith" ) }	// lbl
+
+@s_p2_ds {	mem[1] := ( 0 ) 	// use  ** S_P2_DS  !init 0!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x03 )	// type [0:3]
+	mem[4] :b= ( "P<>V" ) }	// lbl
+
+@s_p3_ds {	mem[1] := ( 0 ) 	// use  ** S_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x01 )	// type [0:1]
+	mem[4] :b= ( "Erev" ) }	// lbl
+
+@s_p4_ds {	mem[1] := ( 1 ) 	// use  ** S_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x07 )	// type [0:7]
+	mem[4] :b= ( "Dith" ) }	// lbl
+
+@s_p5_ds {	mem[1] := ( 1 ) 	// use  ** S_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "LCD " ) }	// lbl
+
+@p_p0_ds {	mem[1] := ( 1 ) 	// use  ** P_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xcb )	// type [-127:127](fs_sq)
+	mem[4] :b= ( "Pcal" ) }	// lbl
+	
+@p_p1_ds {	mem[1] := ( 1 ) 	// use  ** P_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc0 )	// type [-15:15]
+	mem[4] :b= ( "Lin " ) }	// lbl
+
+@p_p2_ds {	mem[1] := ( 1 ) 	// use  ** P_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[4] :b= ( "Ofs-" ) }	// lbl
+
+@p_p3_ds {	mem[1] := ( 1 ) 	// use  ** P_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xcb )	// type [-127:127](fs_sq)
+	mem[4] :b= ( "Sens" ) }	// lbl
+
+@p_p4_ds {	mem[1] := ( 1 ) 	// use  ** P_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[4] :b= ( "Ofs+" ) }	// lbl
+	
+@p_p5_ds {	mem[1] := ( 1 ) 	// use  ** P_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xfd )	// type [-99:99]
+	mem[4] :b= ( "Cent" ) }	// lbl
+
+@v_p0_ds {	mem[1] := ( 1 ) 	// use  ** V_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xcb )	// type [-127:127](fs_sq)
+	mem[4] :b= ( "Vcal" ) }	// lbl
+	
+@v_p1_ds {	mem[1] := ( 1 ) 	// use  ** V_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc0 )	// type [-15:15]
+	mem[4] :b= ( "Lin " ) }	// lbl
+
+@v_p2_ds {	mem[1] := ( 1 ) 	// use  ** V_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[4] :b= ( "Ofs-" ) }	// lbl
+
+@v_p3_ds {	mem[1] := ( 1 ) 	// use  ** V_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xcb )	// type [-127:127](fs_sq)
+	mem[4] :b= ( "Sens" ) }	// lbl
+
+@v_p4_ds {	mem[1] := ( 1 ) 	// use  ** V_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "Drop" ) }	// lbl
+
+@v_p5_ds {	mem[1] := ( 1 ) 	// use  ** V_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[4] :b= ( "Ofs+" ) }	// lbl
+
+@v_p6_ds {	mem[1] := ( 1 ) 	// use  ** V_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "Mon " ) }	// lbl
+
+@v_p7_ds {	mem[1] := ( 1 ) 	// use  ** V_P7_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x01 )	// type [0:1]
+	mem[4] :b= ( "Out " ) }	// lbl
+
+@t_p0_ds {	mem[1] := ( 0 ) 	// use  ** T_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x20 )	// type [0:31]
+	mem[4] :b= ( "LED " ) }	// lbl
+	
+@t_p1_ds {	mem[1] := ( 1 ) 	// use  ** T_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x04 )	// type [0:4]
+	mem[4] :b= ( "Qant" ) }	// lbl
+	
+@t_p2_ds {	mem[1] := ( 1 ) 	// use  ** T_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x03 )	// type [0:3]
+	mem[4] :b= ( "Post" ) }	// lbl
+
+@t_p3_ds {	mem[1] := ( 1 ) 	// use  ** T_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xab )	// type [-11:11]
+	mem[4] :b= ( "Note" ) }	// lbl
+	
+@t_p4_ds {	mem[1] := ( 1 ) 	// use  ** T_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xaf )	// type [-15:15]
+	mem[4] :b= ( "Oct " ) }	// lbl
+
+@eq_p0_ds {	mem[1] := ( 1 ) 	// use  ** EQ_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "Bass" ) }	// lbl
+
+@eq_p1_ds {	mem[1] := ( 1 ) 	// use  ** EQ_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "Treb" ) }	// lbl
+
+@v_p8_ds {	mem[1] := ( 1 ) 	// use  ** V_P8_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "Line" ) }	// lbl
+
+@s_p6_ds {	mem[1] := ( 1 ) 	// use  ** S_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x7d )	// type [0:99]
+	mem[4] :b= ( "Wait" ) }	// lbl
+
+@p_p6_ds {	mem[1] := ( 1 ) 	// use  ** P_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "Lift" ) }	// lbl
+// LAST SYS PARAM!
+@p_p7_ds {	mem[1] := ( 1 ) 	// use  ** P_P7_DS **  !!! SYSTEM PARAMS END !!!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x7e )	// type [0:249]
+	mem[4] :b= ( "Auto" ) }	// lbl
+	
+	
+//////////////////////////////
+//                          //
+//  EXTERNAL PRESET PARAMS  //
+//                          //
+//////////////////////////////
+// encoder parameters outside the usr/sys preset system
+@menu_page_ds {	mem[1] := ( 0 )	// page  ** MENU_PAGE_DS **  !!! EXTERNAL PARAMS START !!!
+	mem[1] :b= ( 0 ) 	// enc (init)
+	mem[1] :b= ( 0x7f )	// type [0:19]
+	mem[4] :b= ( "    " ) }	// lbl
+
+@ps_p0_ds {	mem[1] := ( 0 ) 	// use  ** PS_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x7e )	// type [0:249]
+	mem[4] :b= ( "load" ) }	// lbl
+
+@ps_p1_ds {	mem[1] := ( 0 ) 	// use  ** PS_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x7e )	// type [0:249]
+	mem[4] :b= ( "stor" ) }	// lbl
+
+@ps_p2_ds {	mem[1] := ( 0 ) 	// use  ** PS_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x05 )	// type [0:5]
+	mem[4] :b= ( "Load" ) }	// lbl
+
+@ps_p3_ds {	mem[1] := ( 0 ) 	// use  ** PS_P3_DS **  !!! EXTERNAL PARAMS END !!!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x05 )	// type [0:5]
+	mem[4] :b= ( "Stor" ) }	// lbl
+
+
+//////////////////////////
+//                      //
+//  USER PRESET PARAMS  //
+//                      //
+//////////////////////////
+/////////////////
+// OSCILLATORS //
+/////////////////
+@o_p0_ds {	mem[1] := ( 1 ) 	// use  ** O_P0_DS **  !!! USER PARAMS START !!!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "osc " ) }	// lbl
+
+@o_p1_ds {	mem[1] := ( 1 ) 	// use  ** O_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
+	mem[4] :b= ( "odd " ) }	// lbl
+	
+@o_p2_ds {	mem[1] := ( 1 ) 	// use  ** O_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
+	mem[4] :b= ( "harm" ) }	// lbl
+
+@o_p3_ds {	mem[1] := ( 1 ) 	// use  ** O_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@o_p4_ds {	mem[1] := ( 1 ) 	// use  ** O_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@o_p5_ds {	mem[1] := ( 1 ) 	// use  ** O_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa7 )	// type [-7:7]
+	mem[4] :b= ( "oct " ) }	// lbl
+
+@o_p6_ds {	mem[1] := ( 1 ) 	// use  ** O_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf0 )	// type [-127:127](plat_3cux)
+	mem[4] :b= ( "offs" ) }	// lbl
+
+@o_p7_ds {	mem[1] := ( 1 ) 	// use  ** O_P7_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "xmix" ) }	// lbl
+
+@o_p8_ds {	mem[1] := ( 1 ) 	// use  ** O_P8_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
+	mem[4] :b= ( "fm  " ) }	// lbl
+
+@o_p9_ds {	mem[1] := ( 1 ) 	// use  ** O_P9_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@o_p10_ds {	mem[1] := ( 1 ) 	// use  ** O_P10_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+
+@o_p11_ds {	mem[1] := ( 1 ) 	// use  ** O_P11_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa4 )	// type [-4:4]
+	mem[4] :b= ( "mode" ) }	// lbl
+
+@o_p12_ds {	mem[1] := ( 1 ) 	// use  ** O_P12_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@o_p13_ds {	mem[1] := ( 1 ) 	// use  ** O_P13_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@o_p14_ds {	mem[1] := ( 1 ) 	// use  ** O_P14_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "bass" ) }	// lbl
+
+@o_p15_ds {	mem[1] := ( 1 ) 	// use  ** O_P15_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "treb" ) }	// lbl
+
+@o_p16_ds {	mem[1] := ( 1 ) 	// use  ** O_P16_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf0 )	// type [-127:127](plat_3cux)
+	mem[4] :b= ( "hmul" ) }	// lbl
+
+@o_p17_ds {	mem[1] := ( 1 ) 	// use  ** O_P17_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf0 )	// type [-127:127](plat_3cux)
+	mem[4] :b= ( "hmul" ) }	// lbl
+
+@o_p18_ds {	mem[1] := ( 1 ) 	// use  ** O_P18_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf0 )	// type [-127:127](plat_3cux)
+	mem[4] :b= ( "offs" ) }	// lbl
+	
+@o_p19_ds {	mem[1] := ( 1 ) 	// use  ** O_P19_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "sprd" ) }	// lbl
+	
+@o_p20_ds {	mem[1] := ( 1 ) 	// use  ** O_P20_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "xmix" ) }	// lbl
+///////////
+// NOISE //
+///////////
+@n_p0_ds {	mem[1] := ( 1 ) 	// use  ** N_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "nois" ) }	// lbl
+
+@n_p3_ds {	mem[1] := ( 1 ) 	// use  ** N_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@n_p4_ds {	mem[1] := ( 1 ) 	// use  ** N_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+
+@n_p5_ds {	mem[1] := ( 1 ) 	// use  ** N_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa4 )	// type [-4:4]
+	mem[4] :b= ( "mode" ) }	// lbl
+
+@n_p6_ds {	mem[1] := ( 1 ) 	// use  ** N_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@n_p7_ds {	mem[1] := ( 1 ) 	// use  ** N_P7_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@n_p8_ds {	mem[1] := ( 1 ) 	// use  ** N_P8_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@n_p9_ds {	mem[1] := ( 1 ) 	// use  ** N_P9_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@n_p10_ds {	mem[1] := ( 1 ) 	// use  ** N_P10_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x30 )	// type [0:31](48db_dn)
+	mem[4] :b= ( "puls" ) }	// lbl
+
+@n_p11_ds {	mem[1] := ( 1 ) 	// use  ** N_P11_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "bass" ) }	// lbl
+
+@n_p12_ds {	mem[1] := ( 1 ) 	// use  ** N_P12_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "xmix" ) }	// lbl
+
+@n_p13_ds {	mem[1] := ( 1 ) 	// use  ** N_P13_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "treb" ) }	// lbl
+	
+@n_p14_ds {	mem[1] := ( 1 ) 	// use  ** N_P14_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "duty" ) }	// lbl
+///////////////
+// RESONATOR //
+///////////////
+@r_p0_ds {	mem[1] := ( 1 ) 	// use  ** R_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf1 )	// type [-63:63](reson_r)
+	mem[4] :b= ( "reso" ) }	// lbl
+	
+@r_p1_ds {	mem[1] := ( 1 ) 	// use  ** R_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc6 )	// type [-63:63](fs)
+	mem[4] :b= ( "harm" ) }	// lbl
+
+@r_p2_ds {	mem[1] := ( 1 ) 	// use  ** R_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x72 )	// type [0:127](reson_f)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@r_p3_ds {	mem[1] := ( 1 ) 	// use  ** R_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc6 )	// type [-63:63](fs)
+	mem[4] :b= ( "tap " ) }	// lbl
+
+@r_p4_ds {	mem[1] := ( 1 ) 	// use  ** R_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x71 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "hpf " ) }	// lbl
+
+@r_p5_ds {	mem[1] := ( 1 ) 	// use  ** R_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "xmix" ) }	// lbl
+
+@r_p6_ds {	mem[1] := ( 2 ) 	// use  ** R_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa2 )	// type [-2:2]
+	mem[4] :b= ( "mode" ) }	// lbl
+//////////////
+// FORMANTS //
+//////////////
+@f_p0_ds {	mem[1] := ( 1 ) 	// use  ** F_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p1_ds {	mem[1] := ( 1 ) 	// use  ** F_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p2_ds {	mem[1] := ( 1 ) 	// use  ** F_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p3_ds {	mem[1] := ( 1 ) 	// use  ** F_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p4_ds {	mem[1] := ( 1 ) 	// use  ** F_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p5_ds {	mem[1] := ( 1 ) 	// use  ** F_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+	
+@f_p6_ds {	mem[1] := ( 1 ) 	// use  ** F_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@f_p7_ds {	mem[1] := ( 1 ) 	// use  ** F_P7_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+	
+@f_p8_ds {	mem[1] := ( 1 ) 	// use  ** F_P8_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@f_p9_ds {	mem[1] := ( 1 ) 	// use  ** F_P9_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+	
+@f_p10_ds {	mem[1] := ( 1 ) 	// use  ** F_P10_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@f_p11_ds {	mem[1] := ( 1 ) 	// use  ** F_P11_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@f_p12_ds {	mem[1] := ( 1 ) 	// use  ** F_P12_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+	
+@f_p13_ds {	mem[1] := ( 12 ) 	// use  ** F_P13_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+	
+@f_p14_ds {	mem[1] := ( 1 ) 	// use  ** F_P14_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p15_ds {	mem[1] := ( 1 ) 	// use  ** F_P15_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p16_ds {	mem[1] := ( 1 ) 	// use  ** F_P16_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p17_ds {	mem[1] := ( 1 ) 	// use  ** F_P9_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p18_ds {	mem[1] := ( 1 ) 	// use  ** F_P18_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p19_ds {	mem[1] := ( 1 ) 	// use  ** F_P19_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p20_ds {	mem[1] := ( 1 ) 	// use  ** F_P20_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+	
+@f_p22_ds {	mem[1] := ( 1 ) 	// use  ** F_P22_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p23_ds {	mem[1] := ( 1 ) 	// use  ** F_P23_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p24_ds {	mem[1] := ( 1 ) 	// use  ** F_P24_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x70 )	// type [0:192](48db_freq)
+	mem[4] :b= ( "freq" ) }	// lbl
+	
+@f_p25_ds {	mem[1] := ( 1 ) 	// use  ** F_P25_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[4] :b= ( "levl" ) }	// lbl
+
+@f_p26_ds {	mem[1] := ( 1 ) 	// use  ** F_P26_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+	
+@f_p27_ds {	mem[1] := ( 1 ) 	// use  ** F_P27_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+
+@f_p28_ds {	mem[1] := ( 1 ) 	// use  ** F_P28_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "reso" ) }	// lbl
+//////////////////////
+// PITCH CORRECTION //
+//////////////////////
+@pc_p0_ds {	mem[1] := ( 1 ) 	// use  ** PC_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "cmod" ) }	// lbl
+
+@pc_p1_ds {	mem[1] := ( 1 ) 	// use  ** PC_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "rate" ) }	// lbl
+
+@pc_p2_ds {	mem[1] := ( 1 ) 	// use  ** PC_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x44 )	// type [0:31](inv_rev)
+	mem[4] :b= ( "span" ) }	// lbl
+
+@pc_p3_ds {	mem[1] := ( 1 ) 	// use  ** PC_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[4] :b= ( "corr" ) }	// lbl
+
+@pc_p4_ds {	mem[1] := ( 1 ) 	// use  ** PC_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc9 )	// type [-31:31](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+/////////////
+// ENV GEN //
+/////////////
+@e_p0_ds {	mem[1] := ( 1 ) 	// use  ** E_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x25 )	// type [0:63](fs)
+	mem[4] :b= ( "kloc" ) }	// lbl
+
+@e_p1_ds {	mem[1] := ( 1 ) 	// use  ** E_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x44 )	// type [0:31](inv_rev)
+	mem[4] :b= ( "knee" ) }	// lbl
+
+@e_p2_ds {	mem[1] := ( 1 ) 	// use  ** E_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x76 )	// type [0:63](96db_rev)
+	mem[4] :b= ( "fall" ) }	// lbl
+	
+@e_p3_ds {	mem[1] := ( 1 ) 	// use  ** E_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x75 )	// type [0:63](72db_rev)
+	mem[4] :b= ( "rise" ) }	// lbl
+
+@e_p4_ds {	mem[1] := ( 1 ) 	// use  ** E_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x30 )	// type [0:31](48db_dn)
+	mem[4] :b= ( "velo" ) }	// lbl
+
+@e_p5_ds {	mem[1] := ( 1 ) 	// use  ** E_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x73 )	// type [0:63](p4_48db_dn_n)
+	mem[4] :b= ( "damp" ) }	// lbl
+
+@e_p6_ds {	mem[1] := ( 1 ) 	// use  ** E_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x25 )	// type [0:63](fs)
+	mem[4] :b= ( "dloc" ) }	// lbl
+///////////////////
+// PITCH PREVIEW //
+///////////////////
+@pp_p0_ds {	mem[1] := ( 1 ) 	// use  ** PP_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x31 )	// type [0:63](48db_dn)
+	mem[4] :b= ( "prev" ) }	// lbl
+	
+@pp_p1_ds {	mem[1] := ( 1 ) 	// use  ** PP_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "harm" ) }	// lbl
+
+@pp_p2_ds {	mem[1] := ( 1 ) 	// use  ** PP_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa7 )	// type [-7:7]
+	mem[4] :b= ( "oct " ) }	// lbl
+	
+@pp_p3_ds {	mem[1] := ( 1 ) 	// use  ** PP_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "pmod" ) }	// lbl
+
+@pp_p4_ds {	mem[1] := ( 1 ) 	// use  ** PP_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x0b )	// type [0:11]
+	mem[4] :b= ( "mode" ) }	// lbl
+
+@pp_p5_ds {	mem[1] := ( 1 ) 	// use  ** PP_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[4] :b= ( "tone" ) }	// lbl
+
+@pp_p6_ds {	mem[1] := ( 1 ) 	// use  ** PP_P6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xca )	// type [-63:63](fs_sq)
+	mem[4] :b= ( "vmod" ) }	// lbl
+//////////
+// MIDI //
+//////////
+@m_p0_ds {	mem[1] := ( 1 ) 	// use  ** M_P0_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xb0 )	// type [-16:16]
+	mem[4] :b= ( "chan" ) }	// lbl
+	
+@m_p1_ds {	mem[1] := ( 1 ) 	// use  ** M_P1_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x25 )	// type [0:63](fs)
+	mem[4] :b= ( "vloc" ) }	// lbl
+
+@m_p2_ds {	mem[1] := ( 1 ) 	// use  ** M_P2_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x42 )	// type [0:127](inv)
+	mem[4] :b= ( "bend" ) }	// lbl
+	
+@m_p3_ds {	mem[1] := ( 1 ) 	// use  ** M_P3_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa7 )	// type [-7:7]
+	mem[4] :b= ( "oct " ) }	// lbl
+
+@m_p4_ds {	mem[1] := ( 1 ) 	// use  ** M_P4_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x30 )	// type [0:31](48db_dn)
+	mem[4] :b= ( "velo" ) }	// lbl
+	
+@m_p5_ds {	mem[1] := ( 1 ) 	// use  ** M_P5_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xfc )	// type [-127:31]
+	mem[4] :b= ( "cc  " ) }	// lbl
+
+@m_p6_ds {	mem[1] := ( 1 ) 	// use  ** M_6_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x45 )	// type [0:63](inv_rev)
+	mem[4] :b= ( "cloc" ) }	// lbl
+//////////
+// MISC //
+//////////
+@e_p7_ds {	mem[1] := ( 1 ) 	// use  ** E_P7_DS **
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0x30 )	// type [0:31](48db_dn)
+	mem[4] :b= ( "cvol" ) }	// lbl
+// LAST USR PARAM!
+@b_p0_ds {	mem[1] := ( 1 ) 	// use  ** B_P0_DS **  !!! USER PARAMS END !!!
+	mem[1] :b= ( 0 ) 	// enc
+	mem[1] :b= ( 0xa3 )	// type [-3:3]
+	mem[4] :b= ( "bank" ) }	// lbl

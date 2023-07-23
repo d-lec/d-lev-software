@@ -1,0 +1,89 @@
+/////////////////////////////////
+// Theremin top level assembly //
+/////////////////////////////////
+
+/* threads 
+0: pitch axis processing, pitch correction
+1: volume axis processing, envelope generation
+2: lcd, tuner, pitch preview, pvmod
+3: oscillators
+4: noise, filtering
+5: tone controls, formant banks 0 & 1
+6: formant banks 2 & 3, reson, final mix
+7: boot, ui, hcl, encoder & gpio conditioning, MIDI
+*/
+
+//////////////////////
+// defines and such //
+//////////////////////
+`include "pkg_defs.hal"
+@s_p0_ds	:= `@pre_sys	// start of system presets
+@o_p0_ds	:= `@pre_usr	// start of user presets
+`@thd_park	hlt	// ** THREADS 0-6 PARK HERE **
+
+////////////////////
+// clt jump table //
+////////////////////
+`@clt_0	pc := `@thd_park	// 0: park  ** CLT START **
+`@clt_1	pc := `@thd_park	// 1: park
+`@clt_2	pc := `@thd_park	// 2: park
+`@clt_3	pc := `@thd_park	// 3: park
+`@clt_4	pc := `@thd_park	// 4: park
+`@clt_5	pc := `@thd_park	// 5: park
+`@clt_6	pc := `@thd_park	// 6: park
+`@clt_7	pc := `@code_start	// => code_start
+
+////////////////////
+// irq jump table //
+////////////////////
+`@irq_0	pc := @xsr_0	// => xsr_0()  ** IRQ START **  
+`@irq_1	pc := @xsr_1	// => xsr_1()
+`@irq_2	pc := @xsr_2	// => xsr_2()
+`@irq_3	pc := @xsr_3	// => xsr_3()
+`@irq_4	pc := @xsr_4	// => xsr_4()
+`@irq_5	pc := @xsr_5	// => xsr_5()
+`@irq_6	pc := @xsr_6	// => xsr_6()
+`@irq_7	pc := @xsr_7	// => xsr_7()
+
+
+// start of code
+`@code_start	s7 := pc := `@boot_loader	// <=> boot_loader()
+	pc := @thd_7	// => thd_7()
+
+
+/////////////////
+// thread code //
+/////////////////
+`include "thd_0.hal"
+`include "thd_1.hal"
+`include "thd_2.hal"
+`include "thd_3.hal"
+`include "thd_4.hal"
+`include "thd_5.hal"
+`include "thd_6.hal"
+`include "thd_7.hal"
+ 
+
+//////////////
+// packages //
+//////////////
+`include "pkg_ui.hal"
+`include "pkg_int.hal"
+`include "pkg_float.hal"
+`include "pkg_ch.hal"
+`include "pkg_uart.hal"
+`include "pkg_str.hal"
+`include "pkg_hcl.hal"
+`include "pkg_spi.hal"
+`include "pkg_lcd.hal"
+`include "pkg_enc.hal"
+`include "pkg_pitch.hal"
+`include "pkg_vol.hal"
+`include "pkg_tuner.hal"
+`include "pkg_mod.hal"
+`include "pkg_osc.hal"
+`include "pkg_noise.hal"
+`include "pkg_filter.hal"
+`include "pkg_midi.hal"
+`include "pkg_params.hal"  // second to last!
+`include "pkg_boot.hal"  // last!

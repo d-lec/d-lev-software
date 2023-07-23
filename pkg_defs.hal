@@ -1,0 +1,56 @@
+// clear: 4 bytes per thread
+`define @clt_0 0x0
+`define @clt_1 0x4
+`define @clt_2 0x8
+`define @clt_3 0xc
+`define @clt_4 0x10
+`define @clt_5 0x14
+`define @clt_6 0x18
+`define @clt_7 0x1c
+
+// irq: 4 bytes per thread
+`define @irq_0 0x20
+`define @irq_1 0x24
+`define @irq_2 0x28
+`define @irq_3 0x2c
+`define @irq_4 0x30
+`define @irq_5 0x34
+`define @irq_6 0x38
+`define @irq_7 0x3c
+
+// other addresses
+`define @thd_park    0x3fff  // threads park addr
+`define @code_start  0x40    // code start (4 bytes above @irq_7)
+`define @boot_loader 0x3f00  // boot loader code addr (top 256 bytes)
+`define @pre_upd_ds  0x39c9  // presets update addr (flags)
+`define @pre_sys     0x39ca  // system presets start addr
+`define @pre_usr     0x3b32  // user presets start addr
+
+// register addresses
+`define reg_vect     0x0
+`define reg_time     0x1
+`define reg_error    0x2
+`define reg_io       0x3
+`define reg_uart_tx  0x4
+`define reg_uart_rx  0x5
+`define reg_spi      0x6
+`define reg_spdif    0x8
+`define reg_midi     0x9
+`define reg_pitch    0xA
+`define reg_volume   0xB
+`define reg_tuner    0xC
+`define reg_lcd      0xD
+`define reg_enc      0xE
+
+// spi addresses & stuff
+`define spi_sys_offs 0x0
+`define spi_pre_offs 0x100
+`define spi_sw_offs  0x10000
+`define spi_crc_sig  0xdebb20e3
+
+// encoder stuff
+`define out_knob  0x01
+`define stor_knob 0x04
+`define load_knob 0x06
+`define Stor_knob 0x9c
+`define Load_knob 0x9e
