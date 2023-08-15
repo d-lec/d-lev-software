@@ -15,5 +15,5 @@ TODO: Integrate the text documentation into this README (or a wiki), and replace
 
 # Repo conventions
 "Original text" for this repo can be found at http://d-lev.com/source/d-lev_sw_source_[RELEASE_DATE].zip.
-When mirroring an update from the official D-Lev website, please make a "git tag" corresponding to the date of release in YYYY-MM-DD format, and upload the **original zip file from the website** to the Releases page.
+When mirroring an update from the official D-Lev website, please switch to branch `eric-original`, make a "git tag" corresponding to the date of release in YYYY-MM-DD format, and upload the **original zip file from the website** to the Releases page.
 
