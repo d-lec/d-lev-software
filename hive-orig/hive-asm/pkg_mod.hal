@@ -1,0 +1,145 @@
+
+// XL_MOD(0:lin, 7:rtn | 0:mod) 
+// I/O range=48dB, pivot @ -48dB/27.5Hz, mod=0/+0.25
+// gain = 1
+// 4 cycles
+@xl_mod {	s1 := 0xc0000000	// 3/4  (-48dB/27.5Hz)  ** XL_MOD() START **  
+	P0 -u= P1	// lin - 3/4
+	P0 := lim(s0)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// XM_MOD(0:lin, 7:rtn | 0:mod) 
+// I/O range=48dB, pivot @ -24dB/440Hz, mod=+/-0.125
+// gain = 1
+// 7 cycles max
+@xm_mod {	s1 := 0xe0000000	// 7/8  (-24dB/440Hz)  ** XM_MOD() START **  
+	P0 -u= P1	// lin - 7/8
+	P0 := sat(s0)	// sat
+	P0 *su= 4	// * 4
+	P0 := sat(s0)	// sat
+	P0 >>>= 2	// /4
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// XH_MOD(0:lin, 7:rtn | 0:mod) 
+// I/O range=96dB, pivot @ 0dB/7040Hz, mod=-0.5/0
+// gain = 1
+// tricky: subtract max uns to make negative, sat to remove lowest half
+// 3 cycles
+@xh_mod {	P0 -u= -1	// lin - 0dB/7040Hz  ** XH_MOD() START **  
+	P0 := sat(s0)	// sat
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// XK_MOD(0:lin, 1:loc, 7:rtn | 0:mod) 
+// input range=48dB max, pivot @ loc, mod=0/+0.25
+// gain = 1
+// 5 cycles
+@xk_mod {	P1 |= 0x3	// loc | 0x3  ** XK_MOD() START **  
+	P1 >>r= 2	// loc[0:1) => loc[3/4:1)
+	P0 -u= P1	// lin - loc
+	P0 := lim(s0)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PMVH_MOD(3:vmod\pmod, 7:rtn | 3:mod) 
+// result is +/-0.5
+// P_MOD total gain = 1 * 1/2 = 1/2
+// V_MOD total gain = 1 * 1/2 = 1/2
+// 6 cycles max
+@pmvh_mod {	s0 := mem[@pm_mod_ds]	// get pm_mod  ** PMVH_MOD() START **  
+	P0 *xs= P3	// pm_mod * pmod 
+	s1 := mem[@vh_mod_ds]	// get vh_mod
+	P3 *xs= P1	// vmod * vh_mod
+	P3 +s= P0	// sum
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// SVF_FREQ_MOD(1:freq, 3:vmod\pmod, 7:rtn | 1:out) 
+// 10 +6+18+7 = 41 cycles max
+@svf_freq_mod {	s7 := pc := @pmvh_mod	// <=> pmvh_mod()  ** SVF_FREQ_MOD() START **  
+	P1 >>= 3	// freq/8
+	P1 +us= P3	// freq/8 + pmvh_mod
+	P1 := lim(s1)	// lim
+	P1 *u= 8	// *8
+	s0 := lim(P1)	// lim
+	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
+	s1 := P0	// move freq
+	s7 := pc := @f2_poly	// => @f2_poly()
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// NOISE_LEVEL_MOD(0:vlin, 1:kloc, 3:vmod\pmod, 7:rtn | 0:vout) 
+// pvmod control of noise level (linear)
+// 16 cycles
+@noise_level_mod {	s2 := mem[@pm_mod_ds]	// get pm_mod  ** NOISE_LEVEL_MOD() START **  
+	P2 *xs= P3	// pm_mod * pmod (+/- 1/16)
+	P2 *su= 2	// *2 (+/- 1/8)
+	P1 |= 3	// 3/4
+	P1 >>r= 2	// kloc/4 + 3/4 [3/4:1)
+	P1 := s0 -u s1	// vlin - kloc
+	P1 := lim(s1)	// lim
+	P1 *xus= P3	// * vmod 
+	P1 +s= P2	// combine mods
+	P1 := sat(s1)	// sat
+	P0 >>= 3	// vlin/8
+	P0 +us= P1	// vlin/8 + mod
+	P0 := lim(s0)	// lim
+	P0 *u= 8	// lim * 8
+	P0 := lim(s0)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PP_LEVL_MOD(0:in, 3:vmod\pmod, 7:rtn | 0:out) 
+// pvmod control of preview level
+// 21 +12 = 33 cycles max
+@pp_levl_mod {	s1 := mem[@pm_mod_ds]	// get pm_mod  ** PP_LEVL_MOD() START ** 
+	P1 *xs= P3	// pm_mod * pmod 
+	s0 := mem[@v_lin_ds]	// get linear volume
+	(s3 < 0) ? pc := @vmod_lz	// (vmod < 0) ? 
+	P0 := ~s0	// ~vlin
+	P0 *xus= P3	// ~vlin * vmod : [0:0.5)
+	pc := @cont	// => cont
+@vmod_lz	P0 := nsb(s0)	// vlin uns => sgn
+	P0 *su= 2	// * 2 (fs uns)
+	P0 := lim(s0)	// lim
+	s4 := s0	// copy
+	P0 *xu= s4	// ^2
+	P0 *xu= P4	// ^3
+	P3 *s= -2	// |vmod| * -2 (fs uns)
+	P0 *xu= P3	// ^3 * (|vmod| * -2) : [0:1)
+@cont	P0 -us= P1	// - (pm_mod * pmod)
+	P0 := lim(s0)	// lim
+	P0 *u= 8	// lim * 8
+	P0 := lim(s0)	// lim
+	P0 := ~s0	// ~
+	s7 := pc := @exp2_uint_vlq	// <=> exp2_uint_vlq()
+	s1 := P0	// move
+	P0 *xsu= P1	// in * exp2
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// OSC_HARM_MOD(2:harm, 3:vmod\pmod, 7:rtn | 2:harm) 
+// harm is unsigned
+// 7 +9 = 16 cycles
+@osc_harm_mod {	s7 := pc := @pmvh_mod	// <=> pmvh_mod()  ** OSC_HARM_MOD() START **
+	P2 >>= 6	// harm/64
+	P2 +us= P3	// harm/64 + pmvh_mod
+	P2 := lim(s2)	// lim
+	P2 *u= 64	// lim * 64
+	P2 := lim(s2)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// PC_RATE_MOD(1:rate, 3:vmod, 7:rtn | 1:rate) 
+// rate is unsigned
+// 8 cycles
+@pc_rate_mod {	s2 := mem[@vh_mod_ds]	// get vh_mod  ** PC_RATE_MOD() START **  
+	P3 *xs= P2	// vmod * vh_mod
+	P1 >>= 4	// rate/8
+	P1 +us= P3	// rate/8 + (vmod * vh_mod)
+	P1 := lim(s1)	// lim
+	P1 *u= 16	// lim * 8
+	P1 := lim(s1)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **

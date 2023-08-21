@@ -1,0 +1,2214 @@
+/*
+
+Verification file for HIVE processor and simulator.
+Threads test the various functions and do some real work.
+Not exhaustive in terms of coverage but all opcodes exercised.
+
+THD  Test
+---  ----
+  0  Logical
+  1  Arithmetic
+  2  Branching
+  3  LIT & I/O
+  4  Stack ops
+  5  Functional: DIV_MOD_U, DIV_MOD_S, SQRT_U, EXP2_U, LOG2_U, COS2
+  6  Functional: MUL_F, SQR_F, ADD_F, INV_F, SQRT_F, EXP2_F, LOG2_F, COS_F, SIN_F
+  7  Functional: S_F, F_S, LIM_F, EQ_F, LT_F, CRC32
+
+On completion for all threads:
+ MEM[0x1ff0+THD] = 0xFAB @ success
+  
+*/
+
+/****************/
+/* Hive defines */
+/****************/
+`include "pkg_defs.hal"
+
+
+/*******************/
+/* LBL assignments */
+/*******************/
+
+@thd_0 	:= 0x80	// thread 0 start
+@mem_tst 	:= 0x3f00	// mem test base address
+@mem_tst {	mem[8] := ( 0 ) }	// reserve & init mem test
+@mem_tst2 	:= 0x3f23	// mem test base address
+@mem_tst2 {	mem[8] := ( 0 ) }	// reserve & init mem test
+@fab	:= 0x3fe0	// results base address
+@fab {	mem[8] := ( 0 ) }	// reserve & init results
+
+
+/************************/
+/* Per Thread CLT space */
+/************************/
+
+`@clt_0	s0 := @thd_0	// clt 0 addr 
+	pc := P0
+`@clt_1	s0 := @thd_1	// clt 1 addr
+	pc := P0
+`@clt_2	s0 := @thd_2	// clt 2 addr
+	pc := P0
+`@clt_3	s0 := @thd_3	// clt 3 addr
+	pc := P0
+`@clt_4	s0 := @thd_4	// clt 4 addr
+	pc := P0
+`@clt_5	s0 := @thd_5	// clt 5 addr
+	pc := P0
+`@clt_6	s0 := @thd_6	// clt 6 addr
+	pc := P0
+`@clt_7	s0 := @thd_7	// clt 7 addr
+	pc := P0
+
+
+/************************/
+/* Per Thread IRQ space */
+/************************/
+
+`@irq_0	pc :i= P7	// irq 0 addr
+`@irq_1	pc :i= P7	// irq 1 addr
+`@irq_2	P2--	// irq 2 addr
+	pc :i= P7
+`@irq_3	pc :i= P7	// irq 3 addr
+`@irq_4	pc :i= P7	// irq 4 addr
+`@irq_5	pc :i= P7	// irq 5 addr
+`@irq_6	pc :i= P7	// irq 6 addr
+`@irq_7	pc :i= P7	// irq 7 addr
+
+
+
+/***********************************/
+/* Thread 0 - Logical ALU fuctions */
+/***********************************/
+
+@thd_0 {	nop	// ** THREAD 0 TESTING BEGIN **
+@start	s0 := 0xc90653ea	// test values
+	s1 := 0x6513ca79 
+	s0 := s1	// CPY
+	(P0 == s1) ? pc := @nsb
+	hlt
+@nsb	s0 := nsb(s0)	// NSB
+	s1 := 0x490653ea
+	(P0 == P1) ? pc := @flp
+	hlt
+@flp	s0 := flp(s0)	// FLP
+	s1 := 0x57ca6093
+	(P0 == P1) ? pc := @swp
+	hlt
+@swp	s0 := swp(s0)	// SWP
+	s1 := 0xea5306c9
+	(P0 == P1) ? pc := @not
+	hlt
+@not	s0 := ~s0	// NOT
+	s1 := 0x36f9ac15 
+	(P0 == P1) ? pc := @sgn_0
+	hlt
+@sgn_0	s0 := sgn(s0)	// SGN
+	s1 := -1
+	(P0 == P1) ? pc := @sgn_1
+	hlt
+@sgn_1	s0 := sgn(s1)	// SGN
+	s1 := 1
+	(P0 == P1) ? pc := @brx_0
+	hlt
+@brx_0	s0 := ^s0	// BRX
+	s1 := -1
+	(P0 == P1) ? pc := @brx_1
+	hlt
+@brx_1	s0 := ^s1	// BRX
+	s1 := 0
+	(P0 == P1) ? pc := @lzc_0
+	hlt
+@lzc_0	s0 := lzc(s0)	// LZC
+	s1 := 0
+	(P0 == P1) ? pc := @lzc_1
+	hlt
+@lzc_1	s0 := lzc(s1)	// LZC
+	s1 := 1
+	(P0 == P1) ? pc := @lzc_2
+	hlt
+@lzc_2	s0 := 0	// LZC
+	P0 := lzc(s0)
+	s1 := 32
+	(P0 == P1) ? pc := @lzc_3
+	hlt
+@lzc_3	s0 := 0x1	// LZC
+	P0 := lzc(s0)
+	s1 := 31
+	(P0 == P1) ? pc := @and
+	hlt
+@and	s0 &= s1	// AND
+	s1 := 0x41024268
+	(P0 == P1) ? pc := @and8_0
+	hlt
+@and8_0	s0 &= 0x7c	// AND_8
+	s1 := 0x68
+	(P0 == P1) ? pc := @and16_0
+	hlt
+@and16_0	s1 := s0 & 0x667c	// AND_16
+	s0 := 0x4268
+	(P0 == P1) ? pc := @orr
+	hlt
+@orr	s0 |= s1	// ORR
+	s1 := 0xed17dbfb
+	(P0 == P1) ? pc := @orr8_0
+	hlt
+@orr8_0	s1 := s0 | 0x7c	// ORR_8
+	s0 := 0xc90653fe
+	(P0 == P1) ? pc := @orr16_0
+	hlt
+@orr16_0	s0 |= 0x667c	// ORR_16
+	s1 := 0xc90677fe
+	(P0 == P1) ? pc := @xor
+	hlt
+@xor	s0 ^= s1	// XOR
+	s1 := 0xac159993
+	(P0 == P1) ? pc := @xor8_0
+	hlt
+@xor8_0	s0 ^= 0x5c	// XOR_8
+	s1 := 0xc90653b6
+	(P0 == P1) ? pc := @xor16_0
+	hlt
+@xor16_0	s1 := s0 ^ 0x665c	// XOR_16
+	s0 := 0xc90635b6
+	(P0 == P1) ? pc := @lim_0a
+	hlt	
+@lim_0a	s0 := -3	// LIM
+	s1 := 1
+	P0 +u= P1	// 0xffff,fffd +u 1 = no lim!
+	s1 := -2
+	(s0 == P1) ? pc := @lim_0b
+	hlt
+@lim_0b	P0 := lim(s0)
+	s1 := -2
+	(P0 == P1) ? pc := @lim_1a
+	hlt
+@lim_1a	s0 := -1	// LIM
+	s1 := 1
+	P0 +u= P1	// 0xffff,ffff +u 1 = lim!
+	s1 := 0
+	(s0 == P1) ? pc := @lim_1b
+	hlt
+@lim_1b	P0 := lim(s0)
+	s1 := -1
+	(P0 == P1) ? pc := @lim_2a
+	hlt
+@lim_2a	s0 := 0	// LIM
+	s1 := -1
+	P0 +u= P1	// 0 +u 0xffff,ffff = no lim!
+	s1 := -1
+	(s0 == P1) ? pc := @lim_2b
+	hlt
+@lim_2b	P0 := lim(s0)
+	s1 := -1
+	(P0 == P1) ? pc := @lim_3a
+	hlt
+@lim_3a	s0 := 0	// LIM
+	s1 := -1
+	P0 +us= P1	// 0 +us -1 = lim!
+	s1 := -1
+	(s0 == P1) ? pc := @lim_3b
+	hlt
+@lim_3b	P0 := lim(s0)
+	s1 := 0
+	(P0 == P1) ? pc := @lim_4a
+	hlt
+@lim_4a	s0 := 0	// LIM
+	s1 := 1
+	P0 -u= P1	// 0 -u 1 = lim!
+	s1 := -1
+	(s0 == P1) ? pc := @lim_4b
+	hlt
+@lim_4b	P0 := lim(s0)
+	s1 := 0
+	(P0 == P1) ? pc := @lim_5a
+	hlt
+@lim_5a	s0 := -1	// LIM
+	s1 := 1
+	P0 *u= P1	// 0xffff,ffff *u 1 = no lim!
+	s1 := -1
+	(s0 == P1) ? pc := @lim_5b
+	hlt
+@lim_5b	P0 := lim(s0)
+	s1 := -1
+	(P0 == P1) ? pc := @lim_6a
+	hlt
+@lim_6a	s0 := -1	// LIM
+	s1 := 2
+	P0 *u= P1	// 0xffff,ffff *u 2 = lim!
+	s1 := -2
+	(s0 == P1) ? pc := @lim_6b
+	hlt
+@lim_6b	P0 := lim(s0)
+	s1 := -1
+	(P0 == P1) ? pc := @lim_7a
+	hlt
+@lim_7a	s0 := 2	// LIM
+	s1 := -1
+	P0 *us= P1	// 2 *us -1 = lim!
+	s1 := -2
+	(s0 == P1) ? pc := @lim_7b
+	hlt
+@lim_7b	P0 := lim(s0)
+	s1 := 0
+	(P0 == P1) ? pc := @sat_0a
+	hlt
+
+@sat_0a	s0 := 0x7ffffffd	// SAT
+	s1 := 1
+	P0 +u= P1	// 0x7fff,fffd +u 1 = no sat!
+	s1 := 0x7ffffffe
+	(s0 == P1) ? pc := @sat_0b
+	hlt
+@sat_0b	P0 := sat(s0)
+	s1 := 0x7ffffffe
+	(P0 == P1) ? pc := @sat_1a
+	hlt
+@sat_1a	s0 := 0x7fffffff	// SAT
+	s1 := 1
+	P0 +u= P1	// 0x7fff,ffff +u 1 = sat!
+	s1 := 0x80000000
+	(s0 == P1) ? pc := @sat_1b
+	hlt
+@sat_1b	P0 := sat(s0)
+	s1 := 0x7fffffff
+	(P0 == P1) ? pc := @sat_2a
+	hlt
+@sat_2a	s0 := 0x80000000	// SAT
+	s1 := 1
+	P0 -su= P1	// 0x8000,0000 -su 1 = sat!
+	s1 := 0x7fffffff
+	(s0 == P1) ? pc := @sat_2b
+	hlt
+@sat_2b	P0 := sat(s0)
+	s1 := 0x80000000
+	(P0 == P1) ? pc := @sat_3a
+	hlt
+@sat_3a	s0 := 0x7fffffff	// SAT
+	s1 := 1
+	P0 *s= P1	// 0x7fff,ffff *s 1 = no sat!
+	s1 := 0x7fffffff
+	(s0 == P1) ? pc := @sat_3b
+	hlt
+@sat_3b	P0 := sat(s0)
+	s1 := 0x7fffffff
+	(P0 == P1) ? pc := @sat_4a
+	hlt
+@sat_4a	s0 := 0x7fffffff	// SAT
+	s1 := 2
+	P0 *s= P1	// 0x7fff,ffff *s 2 = sat!
+	s1 := 0xfffffffe
+	(s0 == P1) ? pc := @sat_4b
+	hlt
+@sat_4b	P0 := sat(s0)
+	s1 := 0x7fffffff
+	(P0 == P1) ? pc := @sat_5a
+	hlt
+@sat_5a	s0 := 0x80000000	// SAT
+	s1 := 2
+	P0 *s= P1	// 0x8000,0000 *s 2 = sat!
+	s1 := 0
+	(s0 == P1) ? pc := @sat_5b
+	hlt
+@sat_5b	P0 := sat(s0)
+	s1 := 0x80000000
+	(P0 == P1) ? pc := @clean
+	hlt
+	
+@clean	P1 P0 	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+
+
+
+/**********************************************/
+/* Thread 1 - Arithmetic & shift ALU fuctions */
+/**********************************************/
+
+@thd_1 {	nop	// ** THREAD 1 TESTING BEGIN **
+@start	s0 := 0xc90653ea	// test values
+	s1 := 0x6513ca79
+	
+@add	s0 += s1	// ADD
+	s1 := 0x2e1a1e63
+	(P0 == P1) ? pc := @addu_0
+	hlt
+@addu_0	s1 := 127	// ADD_U
+	s0 +u= P1
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @addus_0
+	hlt
+@addus_0	s1 := 127	// ADD_US
+	s0 +us= P1
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @addsu_0
+	hlt
+@addsu_0	s1 := 127	// ADD_SU
+	s0 +su= P1
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @adds_0
+	hlt
+@adds_0	s1 := 127	// ADD_S
+	s0 +s= P1
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add8_0
+	hlt
+@add8_0	s0 += 127	// ADD_8
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add8_1
+	hlt
+@add8_1	s0 := s1 + -128	// ADD_8
+	s1 := 0x6513c9f9
+	(P0 == P1) ? pc := @add8u_0
+	hlt
+@add8u_0	s0 +u= 127	// ADD_8U
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add8us_0
+	hlt
+@add8us_0	s0 +us= 127	// ADD_8US
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add8su_0
+	hlt
+@add8su_0	s0 +su= 127	// ADD_8SU
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add8s_0
+	hlt
+@add8s_0	s0 +s= 127	// ADD_8S
+	s1 := 0xc9065469
+	(P0 == P1) ? pc := @add16_0
+	hlt
+@add16_0	s0 += 128	// ADD_16
+	s1 := 0xc906546a
+	(P0 == P1) ? pc := @add16_1
+	hlt
+@add16_1	s0 := s1 + -129	// ADD_16
+	s1 := 0x6513c9f8
+	(P0 == P1) ? pc := @add16u_0
+	hlt
+@add16u_0	s0 +u= 128	// ADD_16U
+	s1 := 0xc906546a
+	(P0 == P1) ? pc := @add16us_0
+	hlt
+@add16us_0	s0 +us= 128	// ADD_16US
+	s1 := 0xc906546a
+	(P0 == P1) ? pc := @add16su_0
+	hlt
+@add16su_0	s0 +su= 128	// ADD_16SU
+	s1 := 0xc906546a
+	(P0 == P1) ? pc := @add16s_0
+	hlt
+@add16s_0	s0 +s= 128	// ADD_16S
+	s1 := 0xc906546a
+	(P0 == P1) ? pc := @addxu_0
+	hlt
+@addxu_0	s0 := -128	// ADD_XU
+	s1 := 127
+	P0 +xu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxu_1
+	hlt
+@addxu_1	s0 := -128	// ADD_XU
+	s1 := 128
+	P0 +xu= P1
+	s1 := 1
+	(P0 == P1) ? pc := @addxu_2
+	hlt
+@addxu_2	s0 := 127	// ADD_XU
+	s1 := -128
+	P0 +xu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxu_3
+	hlt
+@addxu_3	s0 := 129	// ADD_XU
+	s1 := -129
+	P0 +xu= P1
+	s1 := 1
+	(P0 == P1) ? pc := @addxus_0
+	hlt
+@addxus_0	s0 := -128	// ADD_XUS
+	s1 := 127
+	P0 +xus= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxus_1
+	hlt
+@addxus_1	s0 := -128	// ADD_XUS
+	s1 := 128
+	P0 +xus= P1
+	s1 := 1
+	(P0 == P1) ? pc := @addxus_2
+	hlt
+@addxus_2	s0 := 127	// ADD_XUS
+	s1 := -128
+	P0 +xus= P1
+	s1 := -1
+	(P0 == P1) ? pc := @addxus_3
+	hlt
+@addxus_3	s0 := 129	// ADD_XUS
+	s1 := -129
+	P0 +xus= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxsu_0
+	hlt
+@addxsu_0	s0 := -129	// ADD_XSU
+	s1 := 127
+	P0 +xsu= P1
+	s1 := -1
+	(P0 == P1) ? pc := @addxsu_1
+	hlt
+@addxsu_1	s0 := -127	// ADD_XSU
+	s1 := 128
+	P0 +xsu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxsu_2
+	hlt
+@addxsu_2	s0 := 127	// ADD_XSU
+	s1 := -129
+	P0 +xsu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxsu_3
+	hlt
+@addxsu_3	s0 := 129	// ADD_XSU
+	s1 := -128
+	P0 +xsu= P1
+	s1 := 1
+	(P0 == P1) ? pc := @addxs_0
+	hlt
+@addxs_0	s0 := -129	// ADD_XS
+	s1 := 127
+	P0 +xs= P1
+	s1 := -1
+	(P0 == P1) ? pc := @addxs_1
+	hlt
+@addxs_1	s0 := -127	// ADD_XS
+	s1 := 128
+	P0 +xs= P1
+	s1 := 0
+	(P0 == P1) ? pc := @addxs_2
+	hlt
+@addxs_2	s0 := 127	// ADD_XS
+	s1 := -129
+	P0 +xs= P1
+	s1 := -1
+	(P0 == P1) ? pc := @addxs_3
+	hlt
+@addxs_3	s0 := 129	// ADD_XS
+	s1 := -128
+	P0 +xs= P1
+	s1 := 0
+	(P0 == P1) ? pc := @sub
+	hlt
+	
+@sub	s0 -= s1	// SUB
+	s1 := 0x63f28971
+	(P0 == P1) ? pc := @subu_0
+	hlt
+@subu_0	s1 := 127	// SUB_U
+	s0 -u= P1
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @subus_0
+	hlt
+@subus_0	s1 := 127	// SUB_US
+	s0 -us= P1
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @subsu_0
+	hlt
+@subsu_0	s1 := 127	// SUB_SU
+	s0 -su= P1
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @subs_0
+	hlt
+@subs_0	s1 := 127	// SUB_S
+	s0 -s= P1
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub8_0
+	hlt
+@sub8_0	s0 -= 127	// SUB_8
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub8_1
+	hlt
+@sub8_1	s0 := s1 - -128	// SUB_8
+	s1 := 0x6513caf9
+	(P0 == P1) ? pc := @sub8u_0
+	hlt
+@sub8u_0	s0 -u= 127	// SUB_8U
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub8us_0
+	hlt
+@sub8us_0	s0 -us= 127	// SUB_8US
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub8su_0
+	hlt
+@sub8su_0	s0 -su= 127	// SUB_8SU
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub8s_0
+	hlt
+@sub8s_0	s0 -s= 127	// SUB_8S
+	s1 := 0xc906536b
+	(P0 == P1) ? pc := @sub16_0
+	hlt
+@sub16_0	s0 -= 128	// SUB_16
+	s1 := 0xc906536a
+	(P0 == P1) ? pc := @sub16_1
+	hlt
+@sub16_1	s0 := s1 - -129	// SUB_16
+	s1 := 0x6513cafa
+	(P0 == P1) ? pc := @sub16u_0
+	hlt
+@sub16u_0	s0 -u= 128	// SUB_16U
+	s1 := 0xc906536a
+	(P0 == P1) ? pc := @sub16us_0
+	hlt
+@sub16us_0	s0 -us= 128	// SUB_16US
+	s1 := 0xc906536a
+	(P0 == P1) ? pc := @sub16su_0
+	hlt
+@sub16su_0	s0 -su= 128	// SUB_16SU
+	s1 := 0xc906536a
+	(P0 == P1) ? pc := @sub16s_0
+	hlt
+@sub16s_0	s0 -s= 128	// SUB_16S
+	s1 := 0xc906536a
+	(P0 == P1) ? pc := @subxu_0
+	hlt
+@subxu_0	s0 := 128	// SUB_XU
+	s1 := 127
+	P0 -xu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxu_1
+	hlt
+@subxu_1	s0 := 126	// SUB_XU
+	s1 := 128
+	P0 -xu= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxu_2
+	hlt
+@subxu_2	s0 := -130	// SUB_XU
+	s1 := -128
+	P0 -xu= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxu_3
+	hlt
+@subxu_3	s0 := -128	// SUB_XU
+	s1 := -129
+	P0 -xu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxus_0
+	hlt
+@subxus_0	s0 := 128	// SUB_XUS
+	s1 := 127
+	P0 -xus= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxus_1
+	hlt
+@subxus_1	s0 := 126	// SUB_XUS
+	s1 := 128
+	P0 -xus= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxus_2
+	hlt
+@subxus_2	s0 := -130	// SUB_XUS
+	s1 := -128
+	P0 -xus= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxus_3
+	hlt
+@subxus_3	s0 := -128	// SUB_XUS
+	s1 := -129
+	P0 -xus= P1
+	s1 := 1
+	(P0 == P1) ? pc := @subxsu_0
+	hlt
+@subxsu_0	s0 := 128	// SUB_XSU
+	s1 := 127
+	P0 -xsu= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxsu_1
+	hlt
+@subxsu_1	s0 := 126	// SUB_XSU
+	s1 := 128
+	P0 -xsu= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxsu_2
+	hlt
+@subxsu_2	s0 := -130	// SUB_XSU
+	s1 := -128
+	P0 -xsu= P1
+	s1 := -2
+	(P0 == P1) ? pc := @subxsu_3
+	hlt
+@subxsu_3	s0 := -128	// SUB_XSU
+	s1 := -129
+	P0 -xsu= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxs_0
+	hlt
+@subxs_0	s0 := 128	// SUB_XS
+	s1 := 127
+	P0 -xs= P1
+	s1 := 0
+	(P0 == P1) ? pc := @subxs_1
+	hlt
+@subxs_1	s0 := 126	// SUB_XS
+	s1 := 128
+	P0 -xs= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxs_2
+	hlt
+@subxs_2	s0 := -130	// SUB_XS
+	s1 := -128
+	P0 -xs= P1
+	s1 := -1
+	(P0 == P1) ? pc := @subxs_3
+	hlt
+@subxs_3	s0 := -128	// SUB_XS
+	s1 := -129
+	P0 -xs= P1
+	s1 := 0
+	(P0 == P1) ? pc := @sbr
+	hlt
+	
+@sbr	s1 := s0 - s1	// SBR
+	s0 := 0x63f28971
+	(P0 == P1) ? pc := @sbru_0
+	hlt
+@sbru_0	s1 := 127	// SBR_U
+	s0 := P1 -u s0
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbrus_0
+	hlt
+@sbrus_0	s1 := 127	// SBR_US
+	s0 := P1 -us s0
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbrsu_0
+	hlt
+@sbrsu_0	s1 := 127	// SBR_SU
+	s0 := P1 -su s0
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbrs_0
+	hlt
+@sbrs_0	s1 := 127	// SBR_S
+	s0 := P1 -s s0
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr8_0
+	hlt
+@sbr8_0	s0 := 127 - s0	// SBR_8
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr8_1
+	hlt
+@sbr8_1	s0 := -128 - s1	// SBR_8
+	s1 := 0x9aec3507
+	(P0 == P1) ? pc := @sbr8u_0
+	hlt
+@sbr8u_0	s0 := 127 -u s0	// SBR_8U
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr8us_0
+	hlt
+@sbr8us_0	s0 := 127 -us s0	// SBR_8US
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr8su_0
+	hlt
+@sbr8su_0	s0 := 127 -su s0	// SBR_8SU
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr8s_0
+	hlt
+@sbr8s_0	s0 := 127 -s s0	// SBR_8S
+	s1 := 0x36f9ac95
+	(P0 == P1) ? pc := @sbr16_0
+	hlt
+@sbr16_0	s0 := 128 - s0	// SBR_16
+	s1 := 0x36f9ac96
+	(P0 == P1) ? pc := @sbr16_1
+	hlt
+@sbr16_1	s0 := -129 - s1	// SBR_16
+	s1 := 0x9aec3506
+	(P0 == P1) ? pc := @sbr16u_0
+	hlt
+@sbr16u_0	s0 := 128 -u s0	// SBR_16U
+	s1 := 0x36f9ac96
+	(P0 == P1) ? pc := @sbr16us_0
+	hlt
+@sbr16us_0	s0 := 128 -us s0	// SBR_16US
+	s1 := 0x36f9ac96
+	(P0 == P1) ? pc := @sbr16su_0
+	hlt
+@sbr16su_0	s0 := 128 -su s0	// SBR_16SU
+	s1 := 0x36f9ac96
+	(P0 == P1) ? pc := @sbr16s_0
+	hlt
+@sbr16s_0	s0 := 128 -s s0	// SBR_16S
+	s1 := 0x36f9ac96
+	(P0 == P1) ? pc := @sbrxu_0
+	hlt
+@sbrxu_0	s0 := 128	// SBR_XU
+	s1 := 127
+	P1 := P0 -xu P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxu_1
+	hlt
+@sbrxu_1	s0 := 126	// SBR_XU
+	s1 := 128
+	P1 := P0 -xu P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxu_2
+	hlt
+@sbrxu_2	s0 := -130	// SBR_XU
+	s1 := -128
+	P1 := P0 -xu P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxu_3
+	hlt
+@sbrxu_3	s0 := -128	// SBR_XU
+	s1 := -129
+	P1 := P0 -xu P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxus_0
+	hlt
+@sbrxus_0	s0 := 128	// SBR_XUS
+	s1 := 127
+	P1 := P0 -xus P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxus_1
+	hlt
+@sbrxus_1	s0 := 126	// SBR_XUS
+	s1 := 128
+	P1 := P0 -xus P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxus_2
+	hlt
+@sbrxus_2	s0 := -130	// SBR_XUS
+	s1 := -128
+	P1 := P0 -xus P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxus_3
+	hlt
+@sbrxus_3	s0 := -128	// SBR_XUS
+	s1 := -129
+	P1 := P0 -xus P1
+	s0 := 1
+	(P0 == P1) ? pc := @sbrxsu_0
+	hlt
+@sbrxsu_0	s0 := 128	// SBR_XSU
+	s1 := 127
+	P1 := P0 -xsu P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxsu_1
+	hlt
+@sbrxsu_1	s0 := 126	// SBR_XSU
+	s1 := 128
+	P1 := P0 -xsu P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxsu_2
+	hlt
+@sbrxsu_2	s0 := -130	// SBR_XSU
+	s1 := -128
+	P1 := P0 -xsu P1
+	s0 := -2
+	(P0 == P1) ? pc := @sbrxsu_3
+	hlt
+@sbrxsu_3	s0 := -128	// SBR_XSU
+	s1 := -129
+	P1 := P0 -xsu P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxs_0
+	hlt
+@sbrxs_0	s0 := 128	// SBR_XS
+	s1 := 127
+	P1 := P0 -xs P1
+	s0 := 0
+	(P0 == P1) ? pc := @sbrxs_1
+	hlt
+@sbrxs_1	s0 := 126	// SBR_XS
+	s1 := 128
+	P1 := P0 -xs P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxs_2
+	hlt
+@sbrxs_2	s0 := -130	// SBR_XS
+	s1 := -128
+	P1 := P0 -xs P1
+	s0 := -1
+	(P0 == P1) ? pc := @sbrxs_3
+	hlt
+@sbrxs_3	s0 := -128	// SBR_XS
+	s1 := -129
+	P1 := P0 -xs P1
+	s0 := 0
+	(P0 == P1) ? pc := @mul
+	hlt
+	
+@mul	s0 *= s1	// MUL
+	s1 := 0x8e924d9a
+	(P0 == P1) ? pc := @mulu_0
+	hlt
+@mulu_0	s1 := 127	// MUL_U
+	s0 *u= P1
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mulus_0
+	hlt
+@mulus_0	s1 := 127	// MUL_US
+	s0 *u= P1
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mulsu_0
+	hlt
+@mulsu_0	s1 := 127	// MUL_SU
+	s0 *u= P1
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @muls_0
+	hlt
+@muls_0	s1 := 127	// MUL_S
+	s0 *u= P1
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul8_0
+	hlt
+@mul8_0	s0 *= 127	// MUL_8
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul8_1
+	hlt
+@mul8_1	s0 := s1 * -128	// MUL_8
+	s1 := 0x761ac380
+	(P0 == P1) ? pc := @mul8u_0
+	hlt
+@mul8u_0	s0 *u= 127	// MUL_8U
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul8us_0
+	hlt
+@mul8us_0	s0 *us= 127	// MUL_8US
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul8su_0
+	hlt
+@mul8su_0	s0 *su= 127	// MUL_8SU
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul8s_0
+	hlt
+@mul8s_0	s0 *s= 127	// MUL_8S
+	s1 := 0xba23a116
+	(P0 == P1) ? pc := @mul16_0
+	hlt
+@mul16_0	s0 *= 128	// MUL_16
+	s1 := 0x8329f500
+	(P0 == P1) ? pc := @mul16_1
+	hlt
+@mul16_1	s0 := s1 * -129	// MUL_16
+	s1 := 0x1106f907
+	(P0 == P1) ? pc := @mulxu
+	hlt
+@mul16u_0	s0 *u= 128	// MUL_16U
+	s1 := 0x8329f500
+	(P0 == P1) ? pc := @mul16us_0
+	hlt
+@mul16us_0	s0 *us= 128	// MUL_16US
+	s1 := 0x8329f500
+	(P0 == P1) ? pc := @mul16su_0
+	hlt
+@mul16su_0	s0 *su= 128	// MUL_16SU
+	s1 := 0x8329f500
+	(P0 == P1) ? pc := @mul16s_0
+	hlt
+@mul16s_0	s0 *s= 128	// MUL_16S
+	s1 := 0x8329f500
+	(P0 == P1) ? pc := @mulxu
+	hlt
+@mulxu	s0 *xu= s1	// MUL_XU
+	s1 := 0x4f5f0991
+	(P0 == P1) ? pc := @mulxus
+	hlt
+@mulxus	s1 *xus= s0	// MUL_XUS
+	s0 := 0xea4b3f18
+	(P0 == P1) ? pc := @mulxsu
+	hlt
+@mulxsu	s1 *xsu= s0	// MUL_XSU
+	s0 := 0x4f5f0991
+	(P0 == P1) ? pc := @mulxs
+	hlt
+@mulxs	s0 *xs= s1	// MUL_XS
+	s1 := 0xea4b3f18
+	(P0 == P1) ? pc := @shl_0
+	hlt
+	
+@shl_0	s1 := 24	// SHL
+	s0 <<<= P1
+	s1 := 0xea000000
+	(P0 == P1) ? pc := @shl_1
+	hlt
+@shl_1	s1 := -24	// SHL
+	s0 <<<= P1
+	s1 := 0xffffffc9
+	(P0 == P1) ? pc := @shls_0
+	hlt
+@shls_0	s1 := -33	// SHL_S
+	s0 <<<= P1
+	s1 := 0
+	(P0 == P1) ? pc := @shls_1
+	hlt
+@shls_1	s1 := 32	// SHL_S
+	s0 <<<= P1
+	s1 := 0
+	(P0 == P1) ? pc := @shl8s_0
+	hlt
+@shl8s_0	s1 := s0 <<< 24	// SHL_8S
+	s0 := 0xea000000
+	(P0 == P1) ? pc := @shl8s_1
+	hlt
+@shl8s_1	s1 := s0 >>> 24	// SHL_8S
+	s0 := 0xffffffc9
+	(P0 == P1) ? pc := @shlu_0
+	hlt
+@shlu_0	s1 := 24	// SHL_U
+	s0 <<= P1
+	s1 := 0xea000000
+	(P0 == P1) ? pc := @shlu_1
+	hlt
+@shlu_1	s1 := -24	// SHL_U
+	s0 <<= P1
+	s1 := 0xc9
+	(P0 == P1) ? pc := @shlu_2
+	hlt
+@shlu_2	s1 := -33	// SHL_U
+	s0 <<= P1
+	s1 := 0
+	(P0 == P1) ? pc := @shlu_3
+	hlt
+@shlu_3	s1 := 32	// SHL_U
+	s0 <<= P1
+	s1 := 0
+	(P0 == P1) ? pc := @shl8u_0
+	hlt
+@shl8u_0	s1 := s0 << 12	// SHL_8U
+	s0 := 0x653ea000
+	(P0 == P1) ? pc := @shl8u_1
+	hlt
+@shl8u_1	s1 := s0 >> 12	// SHL_8U
+	s0 := 0xc9065
+	(P0 == P1) ? pc := @rol
+	hlt
+
+@rol	s1 := -24	// ROL
+	s0 <<r= P1
+	s1 := 0x653eac9
+	(P0 == P1) ? pc := @rol8_0
+	hlt
+@rol8_0	s0 <<r= 12	// ROL_8
+	s1 := 0x653eac90
+	(P0 == P1) ? pc := @rol8_1
+	hlt
+@rol8_1	s0 >>r= 12	// ROL_8
+	s1 := 0x3eac9065
+	(P0 == P1) ? pc := @rol8_2
+	hlt
+@rol8_2	s1 := s0 <<r 12	// ROL_8
+	s0 := 0x653eac90
+	(P0 == P1) ? pc := @rol8_3
+	hlt
+@rol8_3	s1 := s0 >>r 12	// ROL_8
+	s0 := 0x3eac9065
+	(P0 == P1) ? pc := @pow_0
+	hlt
+
+@pow_0	s1 := 21	// POW
+	s0 := 1 << P1
+	s1 := 0x200001
+	P1--
+	(P0 == P1) ? pc := @pow_1
+	hlt
+@pow_1	s1 := -21	// POW
+	s0 := 1 << P1
+	s1 := 0x801
+	P1--
+	(P0 == P1) ? pc := @pow_2
+	hlt
+@pow_2	s1 := 32	// POW
+	s0 := 1 << P1
+	s1 := 0
+	(P0 == P1) ? pc := @pow_3
+	hlt
+@pow_3	s1 := -33	// POW
+	s0 := 1 << P1
+	s1 := 0
+	(P0 == P1) ? pc := @pow8
+	hlt
+@pow8	s0 := 1 << 12	// POW_8
+	s1 := 0x1001
+	P1--
+	(P0 == P1) ? pc := @clean
+	hlt
+
+@clean	P1 P0	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 4] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+
+
+/******************************/
+/* Thread 2 - Branch fuctions */
+/******************************/
+
+@thd_2 {	nop	// ** THREAD 2 TESTING BEGIN **
+@start	s0 := 0	// test values
+	s1 := 1	
+	s2 := -1
+
+@j16_0	pc := @j16_1	// ** JMP_16 ** jmp_16 launch
+	hlt	// launch fail
+@j16z_0	(s0 == 0) ? pc := @j16z_1	// jmp_16 land, jmp_16z launch
+	hlt	// launch fail
+@j16nz_0	(s1 != 0) ? pc := @j16nz_1	// jmp_16z land, jmp_16nz launch
+	hlt	// launch fail
+@j16lz_0	(s2 < 0) ? pc := @j16lz_1	// jmp_16nz land, jmp_16lz launch
+	hlt	// launch fail
+@j16nlz_0	(s1 !< 0) ? pc := @j16nlz_1	// jmp_16lz land, jmp_16nlz launch
+	hlt	// launch fail
+@j16o_0	(s1 == odd) ? pc := @j16o_1	// jmp_16nlz land, jmp_16o launch
+	hlt	// launch fail
+@j16no_0	(s0 != odd) ? pc := @j16no_1	// jmp_16o land, jmp_16no launch
+	hlt	// launch fail
+@j16e_0	(s2 == s2) ? pc := @j16e_1	// jmp_16nlz land, jmp_16e launch
+	hlt	// launch fail
+@j16ne_0	(s2 != s1) ? pc := @j16ne_1	// jmp_16e land, jmp_16ne launch
+	hlt	// launch fail
+@j16ls_0	(s2 <s s0) ? pc := @j16ls_1	// jmp_16ne land, jmp_16ls launch
+	hlt	// launch fail
+@j16nls_0	(s1 !<s s2) ? pc := @j16nls_1	// jmp_16ls land, jmp_16nls launch
+	hlt	// launch fail
+@j16lu_0	(s0 <u s2) ? pc := @j16lu_1	// jmp_16nls land, jmp_16lu launch
+	hlt	// launch fail
+@j16nlu_0	(s2 !<u s1) ? pc := @j16nlu_1	// jmp_16lu land, jmp_16nlu launch
+	hlt	// launch fail
+	
+@j16_2	s6 := 7	// jmp_16nlu land, something to pop
+	(s0 == 0) ? pc := @j16z_3, P6	// jmp_16z & PB launch
+	hlt	// launch fail
+@j16nz_2	s6 := 5	// jmp_16z & PB land, something to pop
+	(s2 != 0) ? pc := @j16nz_3, P6	// jmp_16nz & PB launch
+	hlt	// launch fail
+@j16lz_2	s6 := 4	// jmp_16nz & PB land, something to pop
+	(s2 < 0) ? pc := @j16lz_3, P6	// jmp_16lz & PB launch
+	hlt	// launch fail
+@j16nlz_2	s6 := 3	// jmp_16lz & PB land, something to pop
+	(s0 !< 0) ? pc := @j16nlz_3, P6	// jmp_16nlz & PB launch
+	hlt	// launch fail
+@j16o_2	s6 := 2	// jmp_16nlz & PB land, something to pop
+	(s2 == odd) ? pc := @j16o_3, P6	// jmp_16o & PB launch
+	hlt	// launch fail
+@j16no_2	s6 := 1	// jmp_16o & PB land, something to pop
+	(s0 != odd) ? pc := @j16no_3, P6	// jmp_16no & PB launch
+	hlt	// launch fail
+	
+@j16z_4	(s1 == 0) ? pc := @j16z_5	// jmp_16no & PB land, no jmp_16z launch
+	(s0 != 0) ? pc := @j16nz_5	// no jmp_16nz launch
+	(s1 < 0) ? pc := @j16lz_5	// no jmp_16lz launch
+	(s2 !< 0) ? pc := @j16nlz_5	// no jmp_16nlz launch
+	(s0 == odd) ? pc := @j16o_5	// no jmp_16o launch
+	(s1 != odd) ? pc := @j16no_5	// no jmp_16no launch
+	s6 := 2	// something to pop
+	(s1 == 0) ? pc := @j16z_6, P6	// no jmp_16z & PB launch
+	s6 := 2	// something to pop
+	(s0 != 0) ? pc := @j16nz_6, P6	// no jmp_16nz & PB launch
+	s6 := 2	// something to pop
+	(s0 < 0) ? pc := @j16lz_6, P6	// no jmp_16lz & PB launch
+	s6 := 2	// something to pop
+	(s2 !< 0) ? pc := @j16nlz_6, P6	// no jmp_16nlz & PB launch
+	s6 := 2	// something to pop
+	(s0 == odd) ? pc := @j16o_6, P6	// no jmp_16o & PB launch
+	s6 := 2	// something to pop
+	(s2 != odd) ? pc := @j16no_6, P6	// no jmp_16no & PB launch
+	
+	s2 := 5	// ** JSB_16 ** value to alter
+	s7 := pc := @sub	// jsb_16 launch
+	s1 := 3	// check value
+	(P2 == P1) ? pc := @j8_0	// done with jsb_16 testing
+	hlt
+
+	
+@j16_div	mem[40] :b= ( 0 )	// THE GREAT JMP_16 DIVIDE
+
+	
+@j16_1	pc := @j16z_0	// jmp_16 land, jmp_16 launch
+	hlt	// launch fail
+@j16z_1	(s0 == 0) ? pc := @j16nz_0	// jmp_16z land, jmp_16z launch
+	hlt	// launch fail
+@j16nz_1	(s1 != 0) ? pc := @j16lz_0	// jmp_16nz land, jmp_16nz launch
+	hlt	// launch fail
+@j16lz_1	(s2 < 0) ? pc := @j16nlz_0	// jmp_16lz land, jmp_16lz launch
+	hlt	// launch fail
+@j16nlz_1	(s1 !< 0) ? pc := @j16e_0	// jmp_16nlz land, jmp_16nlz launch
+	hlt	// launch fail
+@j16o_1	(s2 == odd) ? pc := @j16no_0	// jmp_16o land, jmp_16o launch
+	hlt	// launch fail
+@j16no_1	(s0 != odd) ? pc := @j16e_0	// jmp_16no land, jmp_16no launch
+	hlt	// launch fail
+@j16e_1	(s2 == s2) ? pc := @j16ne_0	// jmp_16e land, jmp_16e launch
+	hlt	// launch fail
+@j16ne_1	(s2 != s1) ? pc := @j16ls_0	// jmp_16ne land, jmp_16ne launch
+	hlt	// launch fail
+@j16ls_1	(s2 <s s0) ? pc := @j16nls_0	// jmp_16ls land, jmp_16ls launch
+	hlt	// launch fail
+@j16nls_1	(s1 !<s s2) ? pc := @j16lu_0	// jmp_16nls land, jmp_16nls launch
+	hlt	// launch fail
+@j16lu_1	(s0 <u s1) ? pc := @j16nlu_0	// jmp_16lu land, jmp_16lu launch
+	hlt	// launch fail
+@j16nlu_1	(s2 !<u s0) ? pc := @j16_2	// jmp_16nlu land, jmp_16nlu launch
+	hlt	// launch fail
+	
+@j16z_3	s6 := 6	// jmp_16z & PB land, something to pop
+	(s0 == 0) ? pc := @j16nz_2, P6	// jmp_16z & PB launch
+	hlt	// launch fail
+@j16nz_3	s6 := 5	// jmp_16nz & PB land, something to pop
+	(s2 != 0) ? pc := @j16lz_2, P6	// jmp_16nz & PB launch
+	hlt	// launch fail
+@j16lz_3	s6 := 4	// jmp_16lz & PB land, something to pop
+	(s2 < 0) ? pc := @j16nlz_2, P6	// jmp_16lz & PB launch
+	hlt	// launch fail
+@j16nlz_3	s6 := 3	// jmp_16nlz & PB land, something to pop
+	(s0 !< 0) ? pc := @j16o_2, P6	// jmp_16nlz & PB launch
+	hlt	// launch fail
+@j16o_3	s6 := 4	// jmp_16o & PB land, something to pop
+	(s2 == odd) ? pc := @j16no_2, P6	// jmp_16o & PB launch
+	hlt	// launch fail
+@j16no_3	s6 := 3	// jmp_16no & PB land, something to pop
+	(s0 != odd) ? pc := @j16z_4, P6	// jmp_16no & PB launch
+	hlt	// launch fail
+	
+@j16z_5	hlt	// no jmp_16z land fail
+@j16nz_5	hlt	// no jmp_16nz land fail
+@j16lz_5	hlt	// no jmp_16nlz land fail
+@j16nlz_5	hlt	// no jmp_16lz land fail
+@j16o_5	hlt	// no jmp_16o land fail
+@j16no_5	hlt	// no jmp_16no land fail
+@j16z_6	hlt	// no jmp_16z land fail
+@j16nz_6	hlt	// no jmp_16nz land fail
+@j16lz_6	hlt	// no jmp_16lz land fail
+@j16nlz_6	hlt	// no jmp_16nlz land fail
+@j16o_6	hlt	// no jmp_16o land fail
+@j16no_6	hlt	// no jmp_16no land fail
+
+
+@j8_0	pc := @j8_1	// ** JMP_8 ** jmp_8 launch
+	hlt	// launch fail
+@j8z_0	(s0 == 0) ? pc := @j8z_1	// jmp_8 land, jmp_8z launch
+	hlt	// launch fail
+@j8nz_0	(s1 != 0) ? pc := @j8nz_1	// jmp_8z land, jmp_8nz launch
+	hlt	// launch fail
+@j8lz_0	(s2 < 0) ? pc := @j8lz_1	// jmp_8nz land, jmp_8lz launch
+	hlt	// launch fail
+@j8nlz_0	(s1 !< 0) ? pc := @j8nlz_1	// jmp_8lz land, jmp_8nlz launch
+	hlt	// launch fail
+@j8o_0	(s1 == odd) ? pc := @j8o_1	// jmp_8nlz land, jmp_8o launch
+	hlt	// launch fail
+@j8no_0	(s0 != odd) ? pc := @j8no_1	// jmp_8o land, jmp_8no launch
+	hlt	// launch fail
+@j8e_0	(s2 == s2) ? pc := @j8e_1	// jmp_8nlz land, jmp_8e launch
+	hlt	// launch fail
+@j8ne_0	(s2 != s1) ? pc := @j8ne_1	// jmp_8e land, jmp_8ne launch
+	hlt	// launch fail
+@j8ls_0	(s2 <s s0) ? pc := @j8ls_1	// jmp_8ne land, jmp_8ls launch
+	hlt	// launch fail
+@j8nls_0	(s1 !<s s2) ? pc := @j8nls_1	// jmp_8ls land, jmp_8nls launch
+	hlt	// launch fail
+@j8lu_0	(s0 <u s2) ? pc := @j8lu_1	// jmp_8nls land, jmp_8lu launch
+	hlt	// launch fail
+@j8nlu_0	(s2 !<u s1) ? pc := @j8nlu_1	// jmp_8lu land, jmp_8nlu launch
+	hlt	// launch fail
+
+@j8_1	pc := @j8z_0	// jmp_8 land, jmp_8 launch
+	hlt	// launch fail
+@j8z_1	(s0 == 0) ? pc := @j8nz_0	// jmp_8z land, jmp_8z launch
+	hlt	// launch fail
+@j8nz_1	(s1 != 0) ? pc := @j8lz_0	// jmp_8nz land, jmp_8nz launch
+	hlt	// launch fail
+@j8lz_1	(s2 < 0) ? pc := @j8nlz_0	// jmp_8lz land, jmp_8lz launch
+	hlt	// launch fail
+@j8nlz_1	(s1 !< 0) ? pc := @j8e_0	// jmp_8nlz land, jmp_8nlz launch
+	hlt	// launch fail
+@j8o_1	(s2 == odd) ? pc := @j8no_0	// jmp_8o land, jmp_8o launch
+	hlt	// launch fail
+@j8no_1	(s0 != odd) ? pc := @j8e_0	// jmp_8no land, jmp_8no launch
+	hlt	// launch fail
+@j8e_1	(s2 == s2) ? pc := @j8ne_0	// jmp_8e land, jmp_8e launch
+	hlt	// launch fail
+@j8ne_1	(s2 != s1) ? pc := @j8ls_0	// jmp_8ne land, jmp_8ne launch
+	hlt	// launch fail
+@j8ls_1	(s2 <s s0) ? pc := @j8nls_0	// jmp_8ls land, jmp_8ls launch
+	hlt	// launch fail
+@j8nls_1	(s1 !<s s2) ? pc := @j8lu_0	// jmp_8nls land, jmp_8nls launch
+	hlt	// launch fail
+@j8lu_1	(s0 <u s1) ? pc := @j8nlu_0	// jmp_8lu land, jmp_8lu launch
+	hlt	// launch fail
+@j8nlu_1	(s2 !<u s0) ? pc := @j8_2	// jmp_8nlu land, jmp_8nlu launch
+	hlt	// launch fail
+	
+	
+@j8_2	s6 := 7	// jmp_8nlu land, something to pop
+	(s0 == 0) ? pc := @j8z_3, P6	// jmp_8z & PB launch
+	hlt	// launch fail
+@j8nz_2	s6 := 5	// jmp_8z & PB land, something to pop
+	(s2 != 0) ? pc := @j8nz_3, P6	// jmp_8nz & PB launch
+	hlt	// launch fail
+@j8lz_2	s6 := 4	// jmp_8nz & PB land, something to pop
+	(s2 < 0) ? pc := @j8lz_3, P6	// jmp_8lz & PB launch
+	hlt	// launch fail
+@j8nlz_2	s6 := 3	// jmp_8lz & PB land, something to pop
+	(s0 !< 0) ? pc := @j8nlz_3, P6	// jmp_8nlz & PB launch
+	hlt	// launch fail
+@j8o_2	s6 := 2	// jmp_8nlz & PB land, something to pop
+	(s2 == odd) ? pc := @j8o_3, P6	// jmp_8o & PB launch
+	hlt	// launch fail
+@j8no_2	s6 := 1	// jmp_8o & PB land, something to pop
+	(s0 != odd) ? pc := @j8no_3, P6	// jmp_8no & PB launch
+	hlt	// launch fail
+	
+@j8z_3	s6 := 6	// jmp_8z & PB land, something to pop
+	(s0 == 0) ? pc := @j8nz_2, P6	// jmp_8z & PB launch
+	hlt	// launch fail
+@j8nz_3	s6 := 5	// jmp_8nz & PB land, something to pop
+	(s2 != 0) ? pc := @j8lz_2, P6	// jmp_8nz & PB launch
+	hlt	// launch fail
+@j8lz_3	s6 := 4	// jmp_8lz & PB land, something to pop
+	(s2 < 0) ? pc := @j8nlz_2, P6	// jmp_8lz & PB launch
+	hlt	// launch fail
+@j8nlz_3	s6 := 3	// jmp_8nlz & PB land, something to pop
+	(s0 !< 0) ? pc := @j8o_2, P6	// jmp_8nlz & PB launch
+	hlt	// launch fail
+@j8o_3	s6 := 4	// jmp_8o & PB land, something to pop
+	(s2 == odd) ? pc := @j8no_2, P6	// jmp_8o & PB launch
+	hlt	// launch fail
+@j8no_3	s6 := 3	// jmp_8no & PB land, something to pop
+	(s0 != odd) ? pc := @j8z_4, P6	// jmp_8no & PB launch
+	hlt	// launch fail
+	
+
+@j8z_4	(s1 == 0) ? pc := @j8z_5	// jmp_8no & PB land, no jmp_8z launch
+	(s0 != 0) ? pc := @j8nz_5	// no jmp_8nz launch
+	(s1 < 0) ? pc := @j8lz_5	// no jmp_8lz launch
+	(s2 !< 0) ? pc := @j8nlz_5	// no jmp_8nlz launch
+	(s0 == odd) ? pc := @j8o_5	// no jmp_8o launch
+	(s1 != odd) ? pc := @j8no_5	// no jmp_8no launch
+	s6 := 2	// something to pop
+	(s1 == 0) ? pc := @j8z_6, P6	// no jmp_8z & PB launch
+	s6 := 2	// something to pop
+	(s0 != 0) ? pc := @j8nz_6, P6	// no jmp_8nz & PB launch
+	s6 := 2	// something to pop
+	(s0 < 0) ? pc := @j8lz_6, P6	// no jmp_8lz & PB launch
+	s6 := 2	// something to pop
+	(s2 !< 0) ? pc := @j8nlz_6, P6	// no jmp_8nlz & PB launch
+	s6 := 2	// something to pop
+	(s0 == odd) ? pc := @j8o_6, P6	// no jmp_8o & PB launch
+	s6 := 2	// something to pop
+	(s2 != odd) ? pc := @j8no_6, P6	// no jmp_8no & PB launch
+	
+	pc := @jmp	// done with jmp_8 testing
+	
+@j8z_5	hlt	// no jmp_8z land fail
+@j8nz_5	hlt	// no jmp_8nz land fail
+@j8lz_5	hlt	// no jmp_8nlz land fail
+@j8nlz_5	hlt	// no jmp_8lz land fail
+@j8o_5	hlt	// no jmp_8o land fail
+@j8no_5	hlt	// no jmp_8no land fail
+@j8z_6	hlt	// no jmp_8z land fail
+@j8nz_6	hlt	// no jmp_8nz land fail
+@j8lz_6	hlt	// no jmp_8lz land fail
+@j8nlz_6	hlt	// no jmp_8nlz land fail
+@j8o_6	hlt	// no jmp_8o land fail
+@j8no_6	hlt	// no jmp_8no land fail
+
+
+@jmp	s4 := @jmp_0	// ** JMP ** jmp calcs
+	s5 := @jmp_1
+	P5 -= P4
+	pc += P5	// jmp launch
+@jmp_0	hlt	// launch fail
+@jnz_0	s4 := @jnz_1	// jmp_z land, jmp_nz calcs
+	s5 := @jnz_2
+	P5 -= P4
+	(s1 != 0) ? pc += P5	// jmp_nz launch
+@jnz_1	hlt	// launch fail
+@jlz_0	s4 := @jnlz_0	// jmp_lz land, jmp_nlz calcs
+	s5 := @jnlz_1
+	P5 -= P4
+	(s0 !< 0) ? pc += P5	// jmp_nlz launch
+@jnlz_0	hlt	// launch fail
+
+@jmp_1	s4 := @jnz_0	// jmp land, jmp_z calcs
+	s5 := @jz_0
+	P5 -= P4
+	(s0 == 0) ? pc += P5	// jmp_z launch
+@jz_0	hlt	// launch fail
+@jnz_2	s4 := @jlz_0	// jmp_nz land, jmp_lz calcs
+	s5 := @jlz_1
+	P5 -= P4
+	(s2 < 0) ? pc += P5	// jmp_lz launch
+@jlz_1	hlt	// launch fail
+
+@jnlz_1	s4 := @jz_1	// jmp_nlz land, no jmp_z calcs
+	s5 := @jz_2
+	P5 -= P4
+	(s1 == 0) ? pc += P5	// no jmp_z launch
+@jz_1	s4 := @jnz_3	// no jmp_nz calcs
+	s5 := @jnz_4
+	P5 -= P4
+	(s0 != 0) ? pc += P5	// no jmp_nz launch
+@jnz_3	s4 := @jlz_2	// no jmp_lz calcs
+	s5 := @jlz_3
+	P5 -= P4
+	(s1 < 0) ? pc += P5	// no jmp_lz launch
+@jlz_2	s4 := @jnlz_2	// no jmp_nlz calcs
+	s5 := @jnlz_3
+	P5 -= P4
+	(s2 !< 0) ? pc += P5	// no jmp_nlz launch
+@jnlz_2	pc := @gto	// done with jmp
+
+@jz_2	hlt	// no jmp_z land fail
+@jnz_4	hlt	// no jmp_nz land fail
+@jlz_3	hlt	// no jmp_lz land fail
+@jnlz_3	hlt	// no jmp_nlz land fail
+
+
+@gto	s4 := @gto_0	// ** GTO **
+	pc := P4	// gto launch
+	hlt	// launch fail
+@gto_0	pc := @jsb8	// gto land
+	hlt	// done with gto
+
+
+@jsb8	s2 := 7	// ** JSB_8 ** value to alter
+	s7 := pc := @sub	// jsb_8 launch
+	s1 := 5	// check value
+	(P2 == P1) ? pc := @jsb	// done with jsb_8 testing
+	hlt
+
+	
+@jsb	s2 := 9	// ** JSB ** value to alter
+	s4 := @jsb_0	// jmp calcs
+	s5 := @sub
+	P5 -= P4
+	s7 := pc += P5	// jsb launch
+@jsb_0	s1 := 7	// check value
+	(P2 == P1) ? pc := @gsb
+	hlt
+
+
+@gsb	s2 := 4	// ** GSB ** value to alter
+	s7 := @sub	// gsb addr
+	s7 := pc := P7	// gsb launch
+	s1 := 2	// check value
+	(P2 == P1) ? pc := @isr
+	hlt
+
+@isr	s2 := 7	// ** ISR ** value to alter
+	s0 := 1 << 0x12	// thd 2
+	reg[`reg_vect] := P0	// initiate isr
+	nop	// wait for isr
+	nop
+	s1 := 6	// check value
+	(P2 == P1) ? pc := @clean
+	hlt
+	
+@clean	P2 P1 P0 	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 8] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt	// SUCCESS! - loop forever
+	
+@sub {	P2 -= 2	// gsb land
+	pc := P7 }}	// gsb return
+
+	
+/*********************************************/
+/* Thread 3 - Literal, memory, register, pgc */
+/*********************************************/
+	
+@thd_3 {	nop	// ** THREAD 3 TESTING BEGIN ** 
+@start	s0 := 0x36	// LIT_B vs LIT_L
+	P0 <<= 8
+	s1 := 0x3600	
+	(P0 == P1) ? pc := @lit_0
+	hlt
+@lit_0	s0 := 0x65	// LIT_B vs LIT
+	P0 <<= 24
+	s1 := 0x65000000	
+	(P0 == P1) ? pc := @lit_1
+	hlt
+@lit_1	s0 := 0x97	// LIT_BU vs LIT_LU
+	P0 <<= 8
+	s1 := 0x9700	
+	(P0 == P1) ? pc := @lit_2
+	hlt
+@lit_2	s0 := 0xa1	// LIT_BU vs LIT
+	P0 <<= 24
+	s1 := 0xa1000000	
+	(P0 == P1) ? pc := @lit_3
+	hlt
+@lit_3	s0 := 0x3456	// LIT_L vs LIT
+	P0 <<= 16
+	s1 := 0x34560000	
+	(P0 == P1) ? pc := @lit_4
+	hlt
+@lit_4	s0 := 0x9876	// LIT_LU vs LIT
+	P0 <<= 16
+	s1 := 0x98760000	
+	(P0 == P1) ? pc := @lit_5
+	hlt
+@lit_5	s0 := -0x36	// LIT_B vs LIT_L
+	P0 <<= 8
+	s1 := -0x3600	
+	(P0 == P1) ? pc := @lit_6
+	hlt
+@lit_6	s0 := -0x65	// LIT_B vs LIT
+	P0 <<= 24
+	s1 := -0x65000000	
+	(P0 == P1) ? pc := @lit_7
+	hlt
+@lit_7	s0 := -0x3456	// LIT_L vs LIT
+	P0 <<= 16
+	s1 := -0x34560000	
+	(P0 == P1) ? pc := @mem
+	hlt
+	
+@mem {	s2 := @mem_tst	// * MEM * base address
+	s0 := 0x0123fedc
+	mem[s2] := P0	// W : 0,0
+	s0 := 0x89ab7654
+	s2 -= 7
+	mem[P2+12] := P0	// W : -7,12
+	s0 := mem[s2]	// R : 0,0
+	s1 := 0x0123fedc
+	(P0 == P1) ? pc := @mem_1
+	hlt
+@mem_1	s2 += 1
+	s0 := mem[P2+4]	// R : +1,4
+	s1 := 0x89ab7654
+	(P0 == P1) ? pc := @mem_2
+	hlt
+@mem_2	s0 :hs= mem[s2]	// RHS : 0,0
+	s1 := 0xfffffedc
+	(P0 == P1) ? pc := @mem_3
+	hlt
+@mem_3	s2 -= 1
+	s0 :hu= mem[P2+8]	// RHU : -1,8
+	s1 := 0x89ab
+	(P0 == P1) ? pc := @mem_4
+	hlt
+@mem_4	s0 :bs= mem[s2]	// RBS : 0,0
+	s1 := 0xffffffdc
+	(P0 == P1) ? pc := @mem_5
+	hlt
+@mem_5	s2 += 6
+	s0 :bu= mem[P2+1]	// RBU : +6,1
+	s1 := 0xab
+	(P0 == P1) ? pc := @mem_6
+	hlt
+
+@mem_6	P2 += 9	// base addr += 9
+	s0 := 0xfdb9
+	mem[s2] :h= P0	// WH : 0,0
+	s0 := 0x8ace
+	s2 += 1
+	mem[P2+2] :h= P0	// WH : +1,2
+	s0 := mem[s2]	// R : 0,0
+	s1 := 0xce00fdb9
+	(P0 == P1) ? pc := @mem_7
+	hlt
+@mem_7	s2 -= 3
+	s0 := mem[P2+4]	// R : -3,4
+	s1 := 0x8ace00fd
+	(P0 == P1) ? pc := @mem_8
+	hlt
+@mem_8	s0 :hs= mem[s2]	// RHS : 0,0
+	s1 := 0xfffffdb9
+	(P0 == P1) ? pc := @mem_9
+	hlt
+@mem_9	s2 += 1
+	s0 :hu= mem[P2+2]	// RHU : +1,2
+	s1 := 0x8ace
+	(P0 == P1) ? pc := @mem_a
+	hlt
+@mem_a	s0 :bs= mem[s2]	// RBS : 0,0
+	s1 := 0xffffffb9
+	(P0 == P1) ? pc := @mem_b
+	hlt
+@mem_b	s2 -= 1
+	s0 :bu= mem[P2+4]	// RBU : -1,4
+	s1 := 0xce
+	(P0 == P1) ? pc := @mem_c
+	hlt
+
+@mem_c	P2 += 5	// base addr += 5
+	s0 := 0xda
+	mem[s2] :b= P0	// WB : 0,0
+	s0 := 0xb8
+	s2 -= 3
+	mem[P2+4] :b= P0	// WB : -3,4
+	s0 := 0x9e
+	s2 -= 4
+	mem[P2+6] :b= P0	// WB : -4,6
+	s0 := 0xfc
+	s2 += 2
+	mem[P2+1] :b= P0	// WB : +2,1
+	s0 := mem[s2]	// R : 0,0
+	s1 := 0xfc9eb8da
+	(P0 == P1) ? pc := @mem_d
+	hlt
+@mem_d	s0 :hs= mem[s2]	// RHS : 0,0
+	s1 := 0xffffb8da
+	(P0 == P1) ? pc := @mem_e
+	hlt
+@mem_e	s2 -= 2
+	s0 :hu= mem[P2+4]	// RHU : -2,4
+	s1 := 0xfc9e
+	(P0 == P1) ? pc := @mem_f
+	hlt
+@mem_f	s0 :bs= mem[s2]	// RBS : 0,0
+	s1 := 0xffffffda
+	(P0 == P1) ? pc := @mem_g
+	hlt
+@mem_g	s2 -= 2
+	s0 :bu= mem[P2+5]	// RBU : -2,5
+	s1 := 0xfc
+	(P0 == P1) ? pc := @mem_h
+	hlt
+@mem_h	pc := @mem_i16 }
+	
+@mem_i16 {	P2	// * MEM_I16 *
+	s0 := 0x0123fedc	
+	mem[@mem_tst2] := P0	// W : 0,0
+	s0 := 0x89ab7654
+	mem[@mem_tst2+5] := P0	// W : -7,12 => +5
+	s0 := mem[@mem_tst2]	// R : 0,0
+	s1 := 0x0123fedc
+	(P0 == P1) ? pc := @mem_1
+	hlt
+@mem_1	s0 := mem[@mem_tst2+5]	// R : +1,4 => +5
+	s1 := 0x89ab7654
+	(P0 == P1) ? pc := @mem_2
+	hlt
+@mem_2	s0 :hs= mem[@mem_tst2]	// RHS : 0,0
+	s1 := 0xfffffedc
+	(P0 == P1) ? pc := @mem_3
+	hlt
+@mem_3	s0 :hu= mem[@mem_tst2+7]	// RHU : -1,8 => +7
+	s1 := 0x89ab
+	(P0 == P1) ? pc := @mem_4
+	hlt
+@mem_4	s0 :bs= mem[@mem_tst2]	// RBS : 0,0
+	s1 := 0xffffffdc
+	(P0 == P1) ? pc := @mem_5
+	hlt
+@mem_5	s0 :bu= mem[@mem_tst2+7]	// RBU : +6,1 => +7
+	s1 := 0xab
+	(P0 == P1) ? pc := @mem_6
+	hlt
+
+@mem_6	s0 := 0xfdb9
+	mem[@mem_tst2+9] :h= P0	// WH : +9,0 => +9
+	s0 := 0x8ace
+	mem[@mem_tst2+12] :h= P0	// WH : +10,2 => +12
+	s0 := mem[@mem_tst2+9]	// R : +9,0 => +9
+	s1 := 0xce00fdb9
+	(P0 == P1) ? pc := @mem_7
+	hlt
+@mem_7	s0 := mem[@mem_tst2+10]	// R : +6,4 => +10
+	s1 := 0x8ace00fd
+	(P0 == P1) ? pc := @mem_8
+	hlt
+@mem_8	s0 :hs= mem[@mem_tst2+9]	// RHS : +9,0 => +9
+	s1 := 0xfffffdb9
+	(P0 == P1) ? pc := @mem_9
+	hlt
+@mem_9	s0 :hu= mem[@mem_tst2+12]	// RHU : +10,2 => +12
+	s1 := 0x8ace
+	(P0 == P1) ? pc := @mem_a
+	hlt
+@mem_a	s0 :bs= mem[@mem_tst2+9]	// RBS : +9,0 => +9
+	s1 := 0xffffffb9
+	(P0 == P1) ? pc := @mem_b
+	hlt
+@mem_b	s2 -= 1
+	s0 :bu= mem[@mem_tst2+12]	// RBU : +8,4 => +12
+	s1 := 0xce
+	(P0 == P1) ? pc := @mem_c
+	hlt
+	
+@mem_c	s0 := 0xda
+	mem[@mem_tst2+14] :b= P0	// WB : +14,0 => +14
+	s0 := 0xb8
+	mem[@mem_tst2+15] :b= P0	// WB : +11,4 => +15
+	s0 := 0x9e
+	mem[@mem_tst2+16] :b= P0	// WB : +10,6 => +16
+	s0 := 0xfc
+	mem[@mem_tst2+17] :b= P0	// WB : +16,1 => +17
+	s0 := mem[@mem_tst2+14]	// R : +14,0 => +14
+	s1 := 0xfc9eb8da
+	(P0 == P1) ? pc := @mem_d
+	hlt
+@mem_d	s0 :hs= mem[@mem_tst2+14]	// RHS : +14,0 => +14
+	s1 := 0xffffb8da
+	(P0 == P1) ? pc := @mem_e
+	hlt
+@mem_e	s0 :hu= mem[@mem_tst2+16]	// RHU : +12,4 => +16
+	s1 := 0xfc9e
+	(P0 == P1) ? pc := @mem_f
+	hlt
+@mem_f	s0 :bs= mem[@mem_tst2+14]	// RBS : +14,0 => +14
+	s1 := 0xffffffda
+	(P0 == P1) ? pc := @mem_g
+	hlt
+@mem_g	s0 :bu= mem[@mem_tst2+17]	// RBU : +12,5 => +17
+	s1 := 0xfc
+	(P0 == P1) ? pc := @mem_h
+	hlt
+@mem_h	pc := @mem_i8 }
+
+@mem_i8 {	P2	// * MEM_I8 *
+	s0 := 0x0123fedc	
+	mem[@mem_tst3] := P0	// W : 0,0
+	s0 := 0x89ab7654
+	mem[@mem_tst3+5] := P0	// W : -7,12 => +5
+	s0 := mem[@mem_tst3]	// R : 0,0
+	s1 := 0x0123fedc
+	(P0 == P1) ? pc := @mem_1
+	hlt
+@mem_1	s0 := mem[@mem_tst3+5]	// R : +1,4 => +5
+	s1 := 0x89ab7654
+	(P0 == P1) ? pc := @mem_2
+	hlt
+@mem_2	s0 :hs= mem[@mem_tst3]	// RHS : 0,0
+	s1 := 0xfffffedc
+	(P0 == P1) ? pc := @mem_3
+	hlt
+@mem_3	s0 :hu= mem[@mem_tst3+7]	// RHU : -1,8 => +7
+	s1 := 0x89ab
+	(P0 == P1) ? pc := @mem_4
+	hlt
+@mem_4	s0 :bs= mem[@mem_tst3]	// RBS : 0,0
+	s1 := 0xffffffdc
+	(P0 == P1) ? pc := @mem_5
+	hlt
+@mem_5	s0 :bu= mem[@mem_tst3+7]	// RBU : +6,1 => +7
+	s1 := 0xab
+	(P0 == P1) ? pc := @mem_6
+	hlt
+
+@mem_6	s0 := 0xfdb9
+	mem[@mem_tst3+9] :h= P0	// WH : +9,0 => +9
+	s0 := 0x8ace
+	mem[@mem_tst3+12] :h= P0	// WH : +10,2 => +12
+	s0 := mem[@mem_tst3+9]	// R : +9,0 => +9
+	s1 := 0xce00fdb9
+	(P0 == P1) ? pc := @mem_7
+	hlt
+@mem_7	s0 := mem[@mem_tst3+10]	// R : +6,4 => +10
+	s1 := 0x8ace00fd
+	(P0 == P1) ? pc := @mem_8
+	hlt
+@mem_tst3 {	mem[5] := ( 0 ) }	// reserve & init mem test
+@mem_8	s0 :hs= mem[@mem_tst3+9]	// RHS : +9,0 => +9
+	s1 := 0xfffffdb9
+	(P0 == P1) ? pc := @mem_9
+	hlt
+@mem_9	s0 :hu= mem[@mem_tst3+12]	// RHU : +10,2 => +12
+	s1 := 0x8ace
+	(P0 == P1) ? pc := @mem_a
+	hlt
+@mem_a	s0 :bs= mem[@mem_tst3+9]	// RBS : +9,0 => +9
+	s1 := 0xffffffb9
+	(P0 == P1) ? pc := @mem_b
+	hlt
+@mem_b	s2 -= 1
+	s0 :bu= mem[@mem_tst3+12]	// RBU : +8,4 => +12
+	s1 := 0xce
+	(P0 == P1) ? pc := @mem_c
+	hlt
+	
+@mem_c	s0 := 0xda
+	mem[@mem_tst3+14] :b= P0	// WB : +14,0 => +14
+	s0 := 0xb8
+	mem[@mem_tst3+15] :b= P0	// WB : +11,4 => +15
+	s0 := 0x9e
+	mem[@mem_tst3+16] :b= P0	// WB : +10,6 => +16
+	s0 := 0xfc
+	mem[@mem_tst3+17] :b= P0	// WB : +16,1 => +17
+	s0 := mem[@mem_tst3+14]	// R : +14,0 => +14
+	s1 := 0xfc9eb8da
+	(P0 == P1) ? pc := @mem_d
+	hlt
+@mem_d	s0 :hs= mem[@mem_tst3+14]	// RHS : +14,0 => +14
+	s1 := 0xffffb8da
+	(P0 == P1) ? pc := @mem_e
+	hlt
+@mem_e	s0 :hu= mem[@mem_tst3+16]	// RHU : +12,4 => +16
+	s1 := 0xfc9e
+	(P0 == P1) ? pc := @mem_f
+	hlt
+@mem_f	s0 :bs= mem[@mem_tst3+14]	// RBS : +14,0 => +14
+	s1 := 0xffffffda
+	(P0 == P1) ? pc := @mem_g
+	hlt
+@mem_g	s0 :bu= mem[@mem_tst3+17]	// RBU : +12,5 => +17
+	s1 := 0xfc
+	(P0 == P1) ? pc := @mem_h
+	hlt
+@mem_h	pc := @ver }
+	
+@ver	s0 := reg[`reg_vect]	// check VER
+	P0 >>= 16
+	s1 := 0x1304	// <= !VERSION!
+	(P0 == P1) ? pc := @id
+	hlt
+@id	s0 := reg[`reg_time]	// check ID
+	P0 <<= 29	
+	P0 >>= 29
+	s1 := 3
+	(P0 == P1) ? pc := @pgc
+	hlt
+@pgc	s0 := pc	// check PGC
+@pgc_0	s1 := @pgc_0
+	(P0 == P1) ? pc := @clean
+	hlt
+	
+@clean	P2	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 0xc] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+	
+	
+	
+/***********************************************/
+/* Thread 4 - stack fuctions & error reporting */
+/***********************************************/
+	
+@thd_4 {	nop	// ** THREAD 4 TESTING BEGIN **
+@start {	s1 := 1 << 4	// pop & push error mask
+	s1 <<= 8	
+	s2 := P1
+	s2 |= s1
+	s3 := P2
+	C4 	// clear stack: s/b no errors
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	reg[`reg_error] := P0	// clear errors
+	s0 := `reg_error	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @pop_wempty	// s/b no errors
+	hlt }
+
+@pop_wempty {	P4 	// pop when empty: s/b pop error
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	reg[`reg_error] := s0	// clear errors
+	P0 ^= s1	// s/b pop error
+	(P0 == 0) ? pc := @psh_tfull	// s/b no errors
+	hlt }
+	
+@psh_tfull {	s7 := 31	// push till full: s/b no errors
+@loop	s4 := s7	// <loop start> - push loop idx
+	P7--	// dec idx
+	(s7 !< 0) ? pc := @loop	// <loop end>
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @pp_full	// s/b no errors
+	hlt }
+	
+@pp_full {	P4 := s7	// pop & push when full: s/b no errors
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @psh_wfull	// s/b no errors
+	hlt }
+	
+@psh_wfull {	s4 := 64	// push when full: s/b push error
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	reg[`reg_error] := s0	// clear errors
+	P0 ^= s2	// s/b push error
+	(P0 == 0) ? pc := @no_er	// s/b no errors
+	hlt
+@no_er	s0 := -1	// check stack value: s/b -1
+	P0 ^= s4
+	(P0 == 0) ? pc := @pop_t1	// s/b no errors
+	hlt }
+	
+@pop_t1 {	P7 := 30	// pop till one entry left
+@loop	P4 	// <loop start> - pop
+	P7--	// dec idx
+	(s7 !< 0) ? pc := @loop	// <loop end>
+	s0 := 31	// check stack value: s/b 31
+	P0 ^= s4
+	(P0 == 0) ? pc := @pop_lst	// s/b no errors
+	hlt }
+
+@pop_lst {	P4 	// pop last value: s/b no errors
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @pop_wempty1	// s/b no errors
+	hlt }
+	
+@pop_wempty1 {	P4 	// pop when empty: s/b pop error
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	reg[`reg_error] := s0	// clear errors
+	P0 ^= s1	// s/b pop error
+	(P0 == 0) ? pc := @psh_tfull1	// s/b no errors
+	hlt }
+	
+@psh_tfull1 {	P7 := 31	// push till full: s/b no errors
+@loop	s4 := s7	// <loop start> - push loop idx
+	P7--	// dec idx
+	(s7 !< 0) ? pc := @loop	// <loop end>
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @cls	// s/b no errors
+	hlt }
+
+@cls {	C4 	// clear stack
+	P7 := 31	// push till full: s/b no errors
+@loop	s4 := s7	// <loop start> - push loop idx
+	P7--	// dec idx
+	(s7 !< 0) ? pc := @loop	// <loop end>
+	s0 := reg[`reg_error]	// get errors
+	P0 &= s3	// mask errors
+	(P0 == 0) ? pc := @clean	// s/b no errors
+	hlt }
+	
+@clean	C4 	// clear stack
+	P7 P3 P2 P1 	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 0x10] := P0
+	
+// TIMER - set this to finish after the longest thread
+	s0 := 50	// * timer * idx init
+@loop	P0--	// idx--
+	(s0 !< 0) ? pc := @loop	// idx chk
+	P0	// clean up
+
+
+	s0 := reg[`reg_error]	// get errors
+	reg[`reg_io] := s0	// output errors
+	(P0 != 0) ? pc := @done	// done if there are errors
+	s0 := -1	// else output anded results
+	s1 := mem[@fab]
+	P0 &= P1
+	s1 := mem[@fab, 0x4]
+	P0 &= P1
+	s1 := mem[@fab, 0x8]
+	P0 &= P1
+	s1 := mem[@fab, 0xc]
+	P0 &= P1
+	s1 := mem[@fab, 0x10]
+	P0 &= P1
+	s1 := mem[@fab, 0x14]
+	P0 &= P1
+	s1 := mem[@fab, 0x18]
+	P0 &= P1
+	s1 := mem[@fab, 0x1c]
+	P0 &= P1
+	reg[`reg_io] := P0
+
+@done	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+
+	
+	
+/***********************************************************/
+/* Thread 5 - DIV_MOD_U, DIV_MOD_S, SQRT_U, EXP2_U, LOG2_U */
+/***********************************************************/
+	
+@thd_5 {	nop	// ** THREAD 5 TESTING BEGIN **
+@start {	s0 := 14599	// a_i
+	s1 := -1016418727	// b_i
+	s7 := pc := @div_mod_uint	// <=> div_mod_uint()
+	s3 := 224573	// expected q_o value
+	(P0 == P3) ? pc := @ok
+	hlt
+@ok	s3 := 7342	// expected r_o value
+	(P1 == P3) ? pc := @divmods
+	hlt }
+	
+@divmods {	s0 := -115339	// a_i
+	s1 := 2085596505	// b_i
+	s7 := pc := @div_mod_int	// <=> div_mod_int()
+	s3 := -18083	// expected q_o value
+	(P0 == P3) ? pc := @ok
+	hlt
+@ok	s3 := 78632	// expected r_o value
+	(P1 == P3) ? pc := @sqrtu
+	hlt }
+
+@sqrtu {	s0 := 1017465665	// SQRT_UINT input value
+	s7 := pc := @sqrt_uint	// <=> sqrt_uin()
+	s1 := 2090450132	// SQRT_U expected value
+	(P0 == P1) ? pc := @exp2u
+	hlt }
+	
+@exp2u {	s0 := 3477862497	// EXP2_UINT input value
+	s7 := pc := @exp2_uint	// <=> exp2_uint()
+	s1 := 63141921	// EXP2_U expected value
+	(P0 == P1) ? pc := @log2u
+	hlt }
+	
+@log2u {	s0 := 63141922	// LOG2_UINT input value
+	s7 := pc := @log2_uint	// <=> log2_uint()
+	s1 := 3477862497	// LOG2_U expected value
+	(P0 == P1) ? pc := @cos2t
+	hlt }
+
+@cos2t {	s0 := 2020201050	// COS2 input value
+	s7 := pc := @cos2_int	// <=> cos2_int()
+	s1 := -2110362383	// COS2 expected value
+	(P0 == P1) ? pc := @cln
+	hlt }
+
+@cln	nop	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 0x14] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+
+	
+/*******************************************************************************/
+/* Thread 6 - SQR_F, MUL_F, ADD_F, INV_F, SQRT_F, EXP2_F, LOG2_F, COS_F, SIN_F */
+/*******************************************************************************/
+	
+@thd_6 {	nop	// ** THREAD 6 TESTING BEGIN **
+@start {	s0 := 2521536025	// MAG_i * SQR_F TESTING *
+	s1 := 12	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @sqr_f	// <=> sqr_f()
+	s3 := 2960741484	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 23	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := 1	// expected SGN_o value
+	(P2 == P3) ? pc := @mulf
+	hlt }
+
+@mulf {	s0 := 3120677792	// a_MAG_i  * MUL_F TESTING *   
+	s1 := 2	// a_EXP_i
+	s2 := 1	// a_SGN_i
+	s4 := 2732654938	// b_MAG_i
+	s5 := -4	// b_EXP_i
+	s6 := -1	// b_SGN_i
+	s7 := pc := @mul_f	// <=> mul_f()
+	s3 := 3971036326	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := -3	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @addf
+	hlt }
+
+@addf {	s0 := 2531355060	// a_MAG_i * ADD_F TESTING *
+	s1 := -11	// a_EXP_i
+	s2 := -1	// a_SGN_i
+	s4 := 4284138373	// b_MAG_i
+	s5 := 7	// b_EXP_i
+	s6 := 1	// b_SGN_i
+	s7 := pc := @add_f	// <=> add_f()
+	s3 := 4284128717	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 7	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := 1	// expected SGN_o value
+	(P2 == P3) ? pc := @invf
+	hlt }
+
+@invf {	s0 := 3664337577	// MAG_i * INV_F TESTING *
+	s1 := 26	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @inv_f	// <=> inv_f()
+	s3 := 2517063956	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := -25	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @sqrtf
+	hlt }
+
+@sqrtf {	s0 := 2772199816	// MAG_i * SQRT_F TESTING *
+	s1 := 71	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @sqrt_f	// <=> sqrt_f()
+	s3 := 2439929051	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 36	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @expf
+	hlt }
+	
+@expf {	s0 := 2279681419	// MAG_i * EXP2_F TESTING *
+	s1 := -6	// EXP_i
+	s2 := 1	// SGN_i
+	s7 := pc := @exp2_f	// <=> exp2_f()
+	s3 := 2159864158	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 1	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := 1	// expected SGN_o value
+	(P2 == P3) ? pc := @log2f
+	hlt }
+	
+@log2f {	s0 := 2927639643	// MAG_i * LOG2_F TESTING *
+	s1 := -43	// EXP_i
+	s2 := 1	// SGN_i
+	s7 := pc := @log2_f	// <=> log2_f()
+	s3 := 2922786258	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 6	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @cosf
+	hlt }
+	
+@cosf {	s0 := 3157111868	// MAG_i * COS_F TESTING *
+	s1 := 8	// EXP_i
+	s2 := 1	// SGN_i
+	s7 := pc := @cos_f	// <=> cos_f()
+	s3 := 4080932562	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 0	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := 1	// expected SGN_o value
+	(P2 == P3) ? pc := @sinf
+	hlt }
+	
+@sinf {	s0 := 3207450501	// MAG_i * SIN_F TESTING *
+	s1 := 13	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @sin_f	// <=> sin_f()
+	s3 := 3715746778	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 0	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := 1	// expected SGN_o value
+	(P2 == P3) ? pc := @cln
+	hlt }
+	
+@cln	nop	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 0x18] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+	
+	
+/*******************************************************/
+/* Thread 7 - FRAC_F, F_FRAC, LIM_F, EQ_F, LT_F, CRC32 */
+/*******************************************************/
+	
+@thd_7 {	nop	// ** THREAD 7 TESTING BEGIN **
+@start {	s0 := -12710977	// FRAC_i * FRAC_TO_F TESTING *
+	s7 := pc := @frac_to_f	// <=> frac_to_f()
+	s3 := 3254010112	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := -8	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @ffrac
+	hlt }
+
+@ffrac {	s0 := 3254010112	// MAG_i * F_TO_FRAC TESTING *
+	s1 := -8	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @f_to_frac	// <=> f_to_frac()
+	s3 := -12710977	// expected FRAC_o value
+	(P0 == P3) ? pc := @limf
+	hlt }
+
+@limf {	s0 := 0x12345678	// MAG_i * LIM_F TESTING *
+	s1 := 0x8000	// EXP_i
+	s2 := -1	// SGN_i
+	s7 := pc := @lim_f	// <=> lim_f()
+	s3 := -1	// expected MAG_o value
+	(P0 == P3) ? pc := @ok_0
+	hlt
+@ok_0	s3 := 0x7fff	// expected EXP_o value
+	(P1 == P3) ? pc := @ok_1
+	hlt
+@ok_1	s3 := -1	// expected SGN_o value
+	(P2 == P3) ? pc := @eqf
+	hlt }
+
+@eqf {	s0 := 5	// a_MAG_i * EQ_F TESTING *
+	s1 := 2	// a_EXP_i
+	s2 := 1	// a_SGN_i
+	s4 := 5	// b_MAG_i
+	s5 := 2	// b_EXP_i
+	s6 := 1	// b_SGN_i
+	s7 := pc := @eq_f	// <=> eq_f()
+	s3 := -1	// expected flag value
+	(P0 == P3) ? pc := @cln
+	hlt
+@cln	P6 P5 P4 P2 P1 P0 	// clean up
+	pc := @ltf }
+
+@ltf {	s0 := 4	// a_MAG_i * LT_F TESTING *
+	s1 := 2	// a_EXP_i
+	s2 := -1	// a_SGN_i
+	s4 := 5	// b_MAG_i
+	s5 := 2	// b_EXP_i
+	s6 := -1	// b_SGN_i
+	s7 := pc := @lt_f	// <=> lt_f()
+	s3 := -1	// expected flag value
+	(P0 == P3) ? pc := @cln
+	hlt
+@cln	P6 P5 P4 P2 P1 P0	// clean up
+	pc := @crc }
+	
+@crc {	s0 := 0xdeadbeef	// data_i * CRC32 TESTING *
+	s1 := -1	// all ones init
+	P0 ^= P1	// initial XOR
+	s7 := pc := @crc_32	// <=> crc_32()
+	s3 := 0xe5a59fe0	// expected value
+	(P0 == P3) ? pc := @clean
+	hlt }
+	
+@clean	nop	// DONE, CLEAN UP
+	s0 := 0xfab	// write "FAB"
+	mem[@fab, 0x1c] := P0
+
+	s0 := reg[`reg_io]	// check I/O for retest
+	(P0 != 0) ? pc := @start
+	hlt }	// SUCCESS! - loop forever
+
+`include "pkg_ch.hal"
+`include "pkg_math.hal"
+`include "pkg_spi.hal"
+
+
+
+
+

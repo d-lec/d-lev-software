@@ -1,0 +1,207 @@
+///////////////////////////////////////////////////
+// THD 6 : Formant Banks 2 & 3, Reson, Final Mix //
+///////////////////////////////////////////////////
+//////////
+// INIT //
+//////////
+@xsr_6 {	s6 :hu= mem[@pre_init_ds]	// get pre_init  ** XSR 6 START **
+	(s6 == 0) ? pc := @fz	// (init == 0) ?
+	s4 := @f_form4_ds	// start addr
+	s5 := @r_hp4_ds	// end addr
+	P5 += 12
+	s7 := pc := @init_mem	// <=> init_mem()
+	s7 := pc := @reson	// => @reson()
+	P6--	// pre_init--
+	mem[@pre_init_ds] :h= P6	// sto pre_init
+	pc :i= P7	// => IRETURN
+	
+@fz	s4 := mem[@f_0_3_ds]	// get f_mix
+	s0 := mem[@lr_0_3_ds]	// get lr_mix
+///////////
+// FORM4 //
+///////////
+	s5 := mem[@v_damp_ds]	// get v_damp
+// P5 (levl)
+	s1 := mem[@f_p5_ds]	// get levl[-63:63](s48db_dn)
+	s0 *xs= P1	// in * levl (cpy)
+// P4 (freq), P10 (pmod), P11 (vmod)
+	s1 := mem[@f_p4_ds]	// get freq
+	s3 := mem[@f_p11_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@f_p10_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+// P20 (reso)
+	s2 := mem[@f_p20_ds]	// get reso[0:63](84db_rev)
+	P2 *xu= s5	// reso * v_damp
+	P2 := ~s2	// ~(reso * v_damp)
+	s2 := s2	// cpy
+	P6 := @f_form4_ds	// form ds addr (pop pre_init)
+	s7 := pc := @form	// => @form()
+	P0 >>>= 3	// out/8
+	P4 +s= P0	// f_mix + out/8
+///////////
+// FORM5 //
+///////////
+// P23 (levl)
+	s1 := mem[@f_p23_ds]	// get levl[-63:63](s48db_dn)
+	s0 *xs= P1	// in * levl (cpy)
+// P22 (freq), P10 (pmod), P11 (vmod)
+	s1 := mem[@f_p22_ds]	// get freq
+	s3 := mem[@f_p11_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@f_p10_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+// P20 (reso)
+	s6 := @f_form5_ds	// form ds addr
+	s7 := pc := @form	// => @form()
+	P0 >>>= 3	// out/8
+	P4 +s= P0	// f_mix + out/8
+///////////
+// FORM6 //
+///////////
+// P19 (levl)
+	s1 := mem[@f_p19_ds]	// get levl[-63:63](s48db_dn)
+	s0 *xs= P1	// in * levl (cpy)
+// P18 (freq), P26 (pmod), P27 (vmod)
+	s1 := mem[@f_p18_ds]	// get freq
+	s3 := mem[@f_p27_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@f_p26_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+// P28 (reso)
+	s2 := mem[@f_p28_ds]	// get reso[0:63](84db_rev)
+	P2 *xu= P5	// reso * v_damp
+	P2 := ~s2	// ~(reso * v_damp)
+	s2 := s2	// cpy
+	s6 := @f_form6_ds	// form ds addr
+	s7 := pc := @form	// => @form()
+	P0 >>>= 3	// out/8
+	P4 +s= P0	// f_mix + out/8
+///////////
+// FORM7 //
+///////////
+// P25 (levl)
+	s1 := mem[@f_p25_ds]	// get levl[-63:63](s48db_dn)
+	s0 *xs= P1	// in * levl (cpy)
+// P24 (freq), P26 (pmod), P27 (vmod)
+	s1 := mem[@f_p24_ds]	// get freq
+	s3 := mem[@f_p27_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@f_p26_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+// P28 (reso)
+	s6 := @f_form7_ds	// form ds addr
+	s7 := pc := @form	// => @form()
+	P0 >>>= 3	// out/8
+	P4 +s= P0	// f_mix + out/8
+// formant output switching
+	P4 *su= 8	// f_mix * 8
+	P4 := sat(s4)	// sat
+	s6 :bu= mem[@form_flg_ds]	// get form_flg
+	(P6 != 0) ? pc := @flg_nz	// (flg != 0) ?
+	P4 := s0 	// replace f_mix with lr_mix
+///////////
+// RESON //
+///////////
+// input switching:
+// P6 (mode)
+@flg_nz	s5 := mem[@r_p6_ds]	// get mode
+	(s5 !< 0) ? pc := @mode_nlz	// (mode !< 0) ?
+	P0 := s4 	// replace lr_mix with f_mix
+// P5 (xmix)
+@mode_nlz	s1 := mem[@r_p5_ds]	// get xmix[-31:31](fs)
+	s7 := pc := @reson_xmix	// <=> reson_xmix()
+// P4 (hpf)
+	s1 := mem[@r_p4_ds]	// get hpf[0:127](48db_freq)
+	s6 := @r_hp4_ds	// hpf ds addr
+	s7 := pc := @hp4	// <=> hp4()
+	(s5 == 0) ? pc := @mode_z	// (mode == 0) ?
+// lp_w
+	s1 :bs= mem[@r_p0_ds+4]	// get reso[-63:63] - encoder value!
+	P1 *s= s1	// ^2
+	P1 <<= 20	// fs
+// P1 (harm)
+	s3 := mem[@r_p1_ds]	// get harm[-63:63](fs)
+	s3 *xs= s3	// ^2 (cpy)
+	P1 -u= P3	// reso^2 - harm^2
+	P1 := lim(s1)	// lim
+	s1 *xu= s1	// ^4 (cpy)
+	s2 := 0x60000000	// A := 0.375 (f3 @ 3.6kHz)
+	s2 *xu= P1	// A * x^4 (cpy)
+	P1 -u= P2	// x^2 - (A * x^4)
+	P1 +u= P2	// A + (x^2 - (A * x^4)) (lp_w)
+// P0 (reso)
+	s2 := mem[@r_p0_ds]	// get reso[-63:63]
+// damp
+	s4 := mem[@v_damp_ds]	// get v_damp
+	P1 *xu= s4	// lp_w * v_damp
+	P2 *xsu= s4	// reso * v_damp
+	P3 *xsu= P4	// harm * v_damp
+// P2 (freq), P3 (tap)
+	s4 := mem[@r_p2_ds]	// get freq[0:127]
+	s5 := mem[@r_p3_ds]	// get tap[-63:63](fs)
+	P5 := nsb(s5)	// sgn => uns [0:63](fs)
+	P5 *xu= s4	// ratio [0:1)
+	s6 := 0	// clr := 0
+	s7 := pc := @reson	// => @reson()
+// L&R pseudo stereo:
+@mode_z	s4 -s= s0	// R := f_mix - res_out (cpy)
+	s1 := sat(P4)	// sat (mov)
+	P4 +s= P0	// L := f_mix + res_out
+	s0 := sat(P4)	// sat (mov)
+// reson output switching
+	P5 &= 0x3	// mode[1:0]
+	s6 := 2	// 2
+	(P5 == P6) ? pc := @mode_s	// (mode[1:0] == 2) ? stereo
+	P1 := s0 	// Line_R := Line_L
+@mode_s	s0 := s0	// Mon_L := Line_L copy
+	s1 := s1	// Mon_R := Line_R
+//////////////////
+// PP switching //
+//////////////////
+	s2 := mem[@pp_out_ds]	// PP_L := pp_out
+	s3 := s2	// PP_R := pp_out
+// PP_P4 (mode)
+	s4 := mem[@pp_p4_ds]	// get mode[0:11]
+	P4 &= 0x3	// mode[1:0]
+	(s4 != 0) ? pc := @m_lsbs_nz	// (mode[1:0] != 0) ?
+	P2 := 0	// PP_L := 0
+	P3 := 0	// PP_R := 0
+@m_lsbs_nz	s5 := 1
+	(s4 != P5) ? pc := @m_lsbs_n1	// (mode[1:0] != 1) ?
+	P1 := 0	// Mon_R := 0
+	P2 := 0	// PP_L := 0
+@m_lsbs_n1	s5 := 3
+	(P4 != P5) ? pc := @m_lsbs_n3	// (mode[1:0] != 3) ?
+	P0 := 0	// Mon_L := 0
+	P1 := 0	// Mon_R := 0
+@m_lsbs_n3	P0 +s= P2	// Mon_L + PP_L
+	P0 := sat(s0)	// sat
+	P1 +s= P3	// Mon_R + PP_R
+	P1 := sat(s1)	// sat
+////////////////////
+// Mon, Out, Line //
+////////////////////
+// V_P6 (Mon), V_P7 (Out)
+	s2 := mem[@v_p6_ds]	// get Mon[0:63](48db_dn)
+	P2 >>= 8	// scale Mon (24 bit)
+	s3 := mem[@v_p7_ds]	// get Out[0:1]
+	P2 *u= s3	// Mon * Out
+	P0 *xsu= s2	// Mon_L * Mon
+	P1 *xsu= P2	// Mon_R * Mon
+	reg[`reg_spdif] := P0	// Mon_L to spdif
+	reg[`reg_spdif] := P1	// Mon_R to spdif
+// V_P8 (Line)
+	s2 := mem[@v_p8_ds]	// get Line[0:63](48db_dn)
+	P2 >>= 8	// scale Line (24 bit)
+	P2 *u= P3	// Line * Out
+	P0 *xsu= s2	// Line_L * Line
+	P1 *xsu= P2	// Line_R * Line
+	reg[`reg_spdif] := P0	// Line_L to spdif
+	reg[`reg_spdif] := P1	// Line_R to spdif
+	pc :i= P7 }	// => IRETURN  ** XSR END **
+////////////////
+// data store //
+////////////////
+// KEEP THESE SEQUENTIAL!
+@f_form4_ds {	mem[2] := ( 0 ) }	// ** F_FORM4_DS **
+@f_form5_ds {	mem[2] := ( 0 ) }	// ** F_FORM5_DS **
+@f_form6_ds {	mem[2] := ( 0 ) }	// ** F_FORM6_DS **
+@f_form7_ds {	mem[2] := ( 0 ) }	// ** F_FORM7_DS **
+@r_hp4_ds {	mem[4] := ( 0 ) }	// ** R_HP4_DS **

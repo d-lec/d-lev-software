@@ -1,0 +1,57 @@
+
+// RX_CH(7:rtn | 0:ch) 
+// blocking: stay until ch is received 
+// output ch IS generated 
+@rx_ch {	s0 := 0	// ** RX_CH() START **  prime s0 
+@loop	P0 := reg[`reg_uart_rx]	// read rx uart
+	(s0 < 0) ? pc := @loop	// if neg (empty) read again
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// CH_TX(0:ch, 7:rtn | -) 
+// blocking: stay until ch is taken 
+// input ch IS consumed 
+@ch_tx {	s1 := reg[`reg_uart_tx]	// ** CH_TX() START **  read tx uart
+	(P1 < 0) ? pc := @ch_tx	// if (full) neg read again
+	reg[`reg_uart_tx] := P0	// tx(ch)
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+	
+// CH_ECHO(0:ch, 7:rtn | 0:ch) 
+// echo ch, but not ESC (0x1B)
+// input ch is NOT consumed 
+@ch_echo {	s1 := 0x1b	// ** CH_ECHO() START **  esc
+	(s0 == P1) ? pc := @esc	// chk ch
+	s0 := s0	// copy ch
+	s7 := pc := @ch_tx	// <=> ch_tx()
+@esc	pc := P7 }	// RETURN =>  ** SUB END **
+
+	
+// UINT_TX(0:int, 7:rtn | -) 
+// convert UINT input value to ascii hex, send to tx uart
+// leading zeros are suppressed 
+@uint_tx {	s1 := lzc(s0)	// ** UINT_TX() START ** 
+	P1 >>= 2	// truncate 2 LSbs
+	s1 <<= 2	// 
+	P0 <<= P1	// initial shift
+	P1 -= 7
+	P1 *= -1	// loop idx
+@loop	s0 >>= 28	// <loop start>  shift (copy)
+	s7 := pc := @hex_to_ch	// <=> hex_to_ch()
+	s7 := pc := @ch_tx	// <=> ch_tx()
+	P0 <<= 4	// shift
+	P1--	// idx--
+	(s1 !< 0) ? pc := @loop	// <loop end> 
+	P1 P0	// clean up
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// INT_TX(0:int, 7:rtn | -) 
+// convert INT input value to ascii hex, send to tx uart
+// negative sign is prepended, leading zeros are suppressed 
+@int_tx {	(s0 !< 0) ? pc := @nn	// ** INT_TX() START ** 
+	P0 *= -1	// abs val
+	s0 := '-'	// neg sign
+	s7 := pc := @ch_tx	// <=> ch_tx()
+@nn	pc := @uint_tx }	// => tx_uint()  ** SUB END **
+

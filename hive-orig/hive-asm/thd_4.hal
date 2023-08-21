@@ -1,0 +1,110 @@
+///////////////////////////////
+// THD 4 : Noise & Filtering //
+///////////////////////////////
+//////////
+// INIT //
+//////////
+@xsr_4 {	s0 :hu= mem[@pre_init_ds]	// get pre_init  ** XSR 4 START **
+	(P0 == 0) ? pc := @fz	// (init == 0) ?
+	s4 := @o_svf_ds	// start addr
+	s5 := @on_mix_ds	// end addr
+	s7 := pc := @init_mem	// <=> init_mem()
+	pc :i= P7	// => IRETURN
+////////////////
+// Osc Filter //
+////////////////
+@fz	s0 := mem[@o_out_ds] 	// get osc_out
+// PP_P4 (mode)
+	s1 := mem[@pp_p4_ds]	// get mode[0:11]
+	P1 &= 0x3	// mode[1:0]
+	(P1 != 0) ? pc := @m_lsbs_nz	// (mode[1:0] != 0) ?
+	s2 := mem[@pp_out_ds]	// get pp_out
+	P0 +s= P2	// osc_out + pp_out
+	P0 := sat(s0)	// sat
+// P9 (freq), P13 (vmod), P12 (pmod)
+@m_lsbs_nz	s1 := mem[@o_p9_ds]	// get freq
+	s3 := mem[@o_p13_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@o_p12_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+	s4 := s0	// in (cpy)
+// P10 (reso), P11 (mode)
+	s2 := mem[@o_p10_ds]	// get reso[0:127](exp2_84db_rev_n)
+	s3 := mem[@v_damp_ds]	// get v_damp
+	P2 *xu= P3	// reso * v_damp
+	P2 := ~s2	// ~(reso * v_damp)
+	s5 := mem[@o_p11_ds]	// get mode
+	s6 := @o_svf_ds	// svf ds addr
+	s7 := pc := @svf	// => @svf()
+// P20(xmix)
+	s1 := mem[@o_p20_ds]	// get xmix[0:31](fs)
+	s7 := pc := @svf_xmix	// <=> svf_xmix()
+///////////////
+// Noise Gen //
+///////////////
+	s6 := @n_lfsr_ds	// ds addr
+	s7 := pc := @noise_pink	// <=> @noise_pink()
+// E_P0 (kloc), P9 (vmod), P8 (pmod)
+	s0 := mem[@v_lin_ds]	// get vlin
+	s1 := mem[@e_p0_ds]	// get kloc[0:63](fs)
+	s3 := mem[@n_p9_ds]	// get vmod[-63:63][-63:63](plat_1sq)
+	s3 := mem[@n_p8_ds]	// get pmod[-63:63][-63:63](plat_1sq)
+	s7 := pc := @noise_level_mod	// <=> noise_level_mod()
+// P14 (duty), P10 (puls)
+	s2 := mem[@n_p14_ds]	// get duty[0:31](fs)
+	s4 := mem[@n_p10_ds]	// get puls[0:31](48db exp_dn)
+	s7 := pc := @noise_pulse	// <=> noise_pulse()
+	P0 -u= P1	// level - pulse
+	P0 := lim(s0)	// lim
+	s7 := pc := @exp2_uint_vlq	// <=> exp2_uint_vlq()	
+	s4 := P0	// mov
+	P0 *xsu= P4	// noise * exp2
+// P0 (levl)
+	s4 := mem[@n_p0_ds]	// get levl[0:63](48db_dn)
+	P0 *xsu= P4	// noise * levl
+/////////////////////////
+// Noise Bass & Treble //
+/////////////////////////
+// P13 (treb)
+	s2:= mem[@n_p13_ds]	// get treb[-32:31](fs)
+	s6 := @n_treb_ds	// addr
+	s7 := pc := @eq_treb	// <=> eq_treb()
+// P11 (bass)
+	s2:= mem[@n_p11_ds]	// get bass[-32:31](fs)
+	s6 := @n_bass_ds	// addr
+	s7 := pc := @eq_bass	// <=> eq_bass()
+//////////////////
+// Noise Filter //
+//////////////////
+// P3 (freq), P7 (vmod), P6 (pmod)
+	s1 := mem[@n_p3_ds]	// get freq
+	s3 := mem[@n_p7_ds]	// get vmod[-63:63](fs)
+	s3 := mem[@n_p6_ds]	// get pmod[-63:63](fs)
+	s7 := pc := @svf_freq_mod	// => @svf_freq_mod()
+	s4 := s0	// in (cpy)
+// P4 (reso), P5 (mode)
+	s2 := mem[@n_p4_ds]	// get reso[0:63](exp2_84db_rev_n)
+	s3 := mem[@v_damp_ds]	// get v_damp
+	P2 *xu= P3	// reso * v_damp
+	P2 := ~s2	// ~(reso * v_damp)
+	s5 := mem[@n_p5_ds]	// get mode
+	s6 := @n_svf_ds	// svf ds addr
+	s7 := pc := @svf	// => @svf()
+// P12(xmix)
+	s1 := mem[@n_p12_ds]	// get xmix[0:31](fs)
+	s7 := pc := @svf_xmix	// <=> svf_xmix()
+// mix:	
+	s1 := P0	// move noise
+	P0 +s= P1	// mix
+	P0 := sat(s0)	// sat
+	mem[@on_mix_ds] := P0 	// sto on_mix
+	pc :i= P7 }	// => IRETURN  ** XSR END **
+////////////////
+// data store //
+////////////////
+@n_lfsr_ds {	mem[1] := ( 1 ) }	// ** N_LFSR_DS **  NOTE: SEED=1
+// KEEP THESE SEQUENTIAL!
+@o_svf_ds {	mem[4] := ( 0 ) }	// ** O_SVF2_DS **
+@n_bass_ds {	mem[2] := ( 0 ) }	// ** N_BASS_DS **
+@n_treb_ds {	mem[2] := ( 0 ) }	// ** N_TREB_DS **
+@n_svf_ds {	mem[4] := ( 0 ) }	// ** N_SVF2_DS **
+@on_mix_ds {	mem[1] := ( 0 ) }	// ** ON_MIX_DS **

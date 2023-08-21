@@ -1,0 +1,146 @@
+
+// LCD_INIT_TIMER(7:rtn | -) 
+// for use as LCD init timer
+// spin here until timeout
+// clocked at the 180MHz/8 thread rate and NOT the 48kHz ISR rate.
+// 2 (loop instructions) * 2^21 * 8 (threads) / 180MHz = ~186 ms
+// SPLC780C datasheet calls for 40 ms min
+@lcd_init_timer {	s0 := 1 << 21	// ** LCD_INIT_TIMER() START **  timer init
+//@lcd_init_timer {	s0 := 1	// !!DEBUG!!
+@loop	P0--	// timer--
+	(s0 != 0) ? pc := @loop	// timer chk
+	pc := P7, P0 }	// RETURN =>  ** SUB END **
+
+
+// LCD_INIT(7:rtn | -) 
+// initialize LCD module: 
+// 0x128 : interface 4-bit, 2-line, 5x8 font
+// 0x10c : display on, cursor off, blink off
+// 0x106 : entry mode inc, no shift
+// 0x101 : clear display
+// allow power to settle before calling!
+@lcd_init {	s0 := 0x128	// ** LCD_INIT() START **
+	reg[`reg_lcd] := P0	// 0x128 : set interface to 4-bit, 2-line, 5x8 font
+	s0 := 0x10c
+	reg[`reg_lcd] := P0	// 0x10c : display on, cursor off, blink off
+	s0 := 0x106
+	reg[`reg_lcd] := P0	// 0x106 : entry mode inc, no shift
+	s0 := 0x101
+	reg[`reg_lcd] := P0	// 0x101 : clear display
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// STR_TO_LCD(6:addr, 7:rtn | -) 
+// send string to LCD module
+// string lim sets chars sent
+// if len < lim send ' ' chars to complete
+@str_to_lcd {	s1 :bu= mem[s6]	// ** STR_TO_LCD() START **  len 
+	s2 :bu= mem[s6+1]	// lim
+	P1 += s6	// offset len
+	P2 += s6	// offset lim
+@loop1	(s6 !<u s1) ? pc := @done1	// <loop1 start> chk addr
+	s0 :bu= mem[s6+2]	// get ch
+	reg[`reg_lcd] := P0	// ch to lcd reg
+	P6++	// addr++
+	pc := @loop1	// <loop1 end>
+@done1	s0 := ' '	// ' '
+@loop2	(s6 !<u s2) ? pc := @done2	// <loop2 start> chk addr
+	reg[`reg_lcd] := s0	// ch to lcd reg
+	P6++	// addr++
+	pc := @loop2	// <loop2 end>
+@done2	P6 P2 P1 P0 	// clean up
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// STRS_TO_LCD(7:rtn | -) 
+// send 4 strings to LCD module
+@strs_to_lcd {	
+	s0 := 0x180	// ** STRS_TO_LCD() START ** 
+	reg[`reg_lcd] := P0	// 0x180 : lcd addr line 0
+	s6 := @lcd_str0	// lcd_str0 addr
+	s7 := pc := @str_to_lcd	// <=> str_to_lcd()
+//
+	s0 := 0x1c0
+	reg[`reg_lcd] := P0	// 0x1c0 : lcd addr line 1
+	s6 := @lcd_str1	// lcd_str1 addr
+	s7 := pc := @str_to_lcd	// <=> str_to_lcd()
+//
+	s0 := 0x194
+	reg[`reg_lcd] := P0	// 0x194 : lcd addr line 2
+	s6 := @lcd_str2	// lcd_str2 addr
+	s7 := pc := @str_to_lcd	// <=> str_to_lcd()
+//
+	s0 := 0x1d4
+	reg[`reg_lcd] := P0	// 0x1d4 : lcd addr line 3
+	s6 := @lcd_str3	// lcd_str3 addr
+	s7 := pc := @str_to_lcd	// <=> str_to_lcd()
+	pc := P7 }	// * SUB END * return
+
+
+// LCD display strings - one str per line
+@lcd_str0 {	mem[1] :b= ( 0 )	// len ** LCD_STR0 ds **
+	mem[1] :b= ( 20 )	// lim
+	mem[20] :b= ( 0 ) }	// ch
+@lcd_str1 {	mem[1] :b= ( 0 )	// len ** LCD_STR1 ds **
+	mem[1] :b= ( 20 )	// lim
+	mem[20] :b= ( 0 ) }	// ch
+@lcd_str2 {	mem[1] :b= ( 0 )	// len ** LCD_STR2 ds **
+	mem[1] :b= ( 20 )	// lim
+	mem[20] :b= ( 0 ) }	// ch
+@lcd_str3 {	mem[1] :b= ( 0 )	// len ** LCD_STR3 ds **
+	mem[1] :b= ( 20 )	// lim
+	mem[20] :b= ( 0 ) }	// ch
+
+	
+// LCD_UPD(7:rtn | -) 
+// params to strings to LCD
+@lcd_upd {	s6 := @lcd_str0	// LCD line 0 addr  ** LCD_UPD() START **
+	s7 := pc := @str_clr	// <=> str_clr()
+	s1 := 0	// offs
+	s7 := pc := @left_param_to_str	// <=> left_param_to_str()
+	s1 := 1	// offs
+	s7 := pc := @param_to_str	// <=> param_to_str()
+//
+	P6 := @lcd_str1	// LCD line 1 addr
+	s7 := pc := @str_clr	// <=> str_clr()
+	s1 := 2	// offs
+	s7 := pc := @left_param_to_str	// <=> left_param_to_str()
+	s1 := 3	// offs
+	s7 := pc := @param_to_str	// <=> param_to_str()
+//
+	P6 := @lcd_str2	// LCD line 2 addr
+	s7 := pc := @str_clr	// <=> str_clr()
+	s1 := 4	// offs
+	s7 := pc := @left_param_to_str	// <=> left_param_to_str()
+	s1 := 5	// offs
+	s7 := pc := @param_to_str	// <=> param_to_str()
+//
+	P6 := @lcd_str3	// LCD line 3 addr
+	s7 := pc := @str_clr	// <=> str_clr()
+	s1 := 6	// offs
+	s7 := pc := @left_param_to_str	// <=> left_param_to_str()
+	s1 := 7	// offs
+	s7 := pc := @param_to_str	// <=> param_to_str()
+//	
+	s7 := pc := @strs_to_lcd	// <=> strs_to_lcd()
+	pc := P7, P6 }	// => RETURN  ** SUB END **
+
+
+// LCD_PWM(0:lcd, 7:rtn | 0:out) 
+// lcd backlite pwm
+// return 1=on, 0=off
+// frequencies are positioned at highest hum filter notch
+// simple ratios rather than absolute frequencies are used
+// which drives the beat frequency massively subsonic (cycle time = days)
+// off is fully off
+@lcd_pwm {	s1 := mem[@pwm_ds]	// get pwm  ** LCD_PWM() START **
+	s2 := 0x147ae14	// inc (240Hz)
+	s3 := mem[@s_p0_ds]	// get 50HZ[0:1] 
+	(P3 == 0) ? pc := @60Hz	// (50Hz == 0) ?
+	P2 := 0x1111111	// inc (200Hz)
+@60Hz	s1 +u= P2	// pwm + inc (modulo) (cpy)
+	mem[@pwm_ds] := P1	// sto pwm
+	P1 *xu= s1	// pwm^2
+	P0 +xu= P1	// lcd + pwm^2 (carry out)
+	pc := P7	// => RETURN
+@pwm_ds {	mem[1] := ( 0 ) } }	// ** PWM_DS **  ** SUB END **

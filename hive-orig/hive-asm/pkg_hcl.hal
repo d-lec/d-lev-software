@@ -1,0 +1,473 @@
+
+// General rules are:
+// - mem[s4]   :b= len (length) 
+// - mem[s4+1] :b= lim (limit) 
+// - mem[s4+2] :h= rdx (radix) 
+// - mem[s4+4] :=  tok (token store base) 
+// - input s0:data, s1:radix IS consumed / generated
+// - thru s5:addr NOT consumed
+
+// TOK_CLR(5:t_addr, 7:rtn | 5:t_addr) 
+// clear length & state
+@tok_clr {	s2 := 0	// ** TOK_CLR() START **
+	mem[s5] :b= P2	// clear len
+	s7 := pc := @tok_st_clr	// <=> tok_st_clr()
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+	
+// TOK_TOP(5:t_addr, 7:rtn | 0:tok, 1:rdx, 2:len, 5:t_addr)
+// return tok, rdx, len;
+// if empty return len (and tok) zero
+@tok_top {	s1 :hu= mem[s5+2]	// ** TOK_TOP SUB **  get rdx
+	s2 :bu= mem[s5]	// get len
+	(s2 == 0) ? pc := @z	// chk len
+	s2--	// len--
+	P2 *= 4	// scale len
+	P2 += s5	// addr offset
+	s0 := mem[P2+4]	// get tok
+	pc := P7	// => RETURN
+@z	s0 := 0	// 0 tok
+	pc := P7  }	// RETURN =>  ** SUB END **
+
+
+// TOK_PUSH(0:tok, 1:rdx, 5:t_addr, 7:rtn | 0:flag, 5:t_addr) 
+// push tok & radix to data store
+// return flag: -1=error; 0=ok 
+@tok_push {	s2 :bu= mem[s5]	// ** TOK_PUSH SUB **  get len
+	s3 :bu= mem[s5+1]	// get lim
+	(s2 !<u P3) ? pc := @nlu	// chk len
+	mem[s5+2] :h= P1	// sto rdx
+	s2++	// len++
+	mem[s5] :b= P2	// sto len++
+	P2 *= 4	// scale len
+	P2 += s5	// t_addr offset
+	mem[P2+4] := P0	// sto tok
+	s0 := 0	// ok flag
+	s7 := pc := @tok_st_clr	// <=> tok_st_clr()
+	pc := P7	// => RETURN
+@nlu	P2 P1 P0	// clean up
+	s0 := -1	// error flag
+	s7 := pc := @tok_st_clr	// <=> tok_st_clr()
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+	
+// STR_TO_TOK(5:t_addr, 6:s_addr, 7:rtn | 0:flag, 5:t_addr, 6:s_addr) 
+// clear tokens & state, convert string to tokens
+// return flag: -1=error; 0=ok
+/*
+STK
+---   
+ s0 ch / len
+ s1 
+ s2 
+ s3 
+ s4 flg
+ s5 tok ds addr (thru)
+ s6 str ds addr (thru)
+ s7 rtn
+*/
+@str_to_tok {	s7 := pc := @tok_clr	// ** STR_TO_TOK() START **  <=> tok_clr()
+	s7 := pc := @str_len	// <=> str_len()
+	(s0 != 0) ? pc := @cont	// chk len
+	pc := P7	// => RETURN
+@cont	s4 := 0	// init flag (ok)
+	P0 += s6	// offset len
+	s6 := s6	// init idx
+@loop	s0 :bu= mem[s6+2]	// <loop start> get ch
+	s7 := pc := @ch_to_tok	// <=> ch_to_tok()
+	P4 |= P0	// update flg
+	P6++	// loop idx++
+	(s6 <u s0) ? pc := @loop	// <loop end> chk idx
+@done	P0 := P4	// move flg
+	pc := P7, P6 }	// ** SUB END **  => RETURN
+
+	
+// CH_TO_TOK(0:ch, 5:t_addr, 7:rtn | 0:flag, 5:t_addr) 
+// take char and store to tok 
+// push tok and last tok rdx 
+// return flag: -1=error; 0=ok
+// STK
+// ---   
+// s0 ch
+// s1 rdx
+// s2 (tok)
+// s3 (sgn)
+// s4 flg
+// s5 tok ds addr (thru)
+// s6
+// s7 rtn
+@ch_to_tok {	s3 := 0x7f	// ** CH_TO_TOK() START **
+	(s0 <u P3) ? pc := @init	// (ch < 0x7f) ? skip if ok
+	P0 := -1	// bad flg
+	pc := P7	// => RETURN
+@init	s1 :hu= mem[@st_rdx]	// get rdx
+	s4 := 0	// init flg (ok)
+// ctrl block 
+@ctrl	s3 := ' '	// * ctrl block *
+	(s0 !<u P3) ? pc := @space	// (ch !< 0x20) ? skip if not ctrl
+	(s1 == 0) ? pc := @r0	// (rdx == 0) ? (0 means null token)
+	s0 := mem[@st_tok]	// get tok
+	s2 :bs= mem[@st_sgn]	// get sgn
+	P0 *= P2	// sign tok
+	s7 := pc := @tok_push	// <=> tok_push()
+	P4 |= P0	// update flg
+	s1 := 256	// rdx = 256
+	pc := @psh_done	// push, done
+@r0	P1 := 256	// rdx = 256
+	pc := @psh_done	// push, done
+// space block
+@space	s3 := ' '	// * space block *
+	(s0 != P3) ? pc := @rad0	// (ch != 0x20) ? skip if not space
+	(s1 != 0) ? pc := @rnz	// (rdx != 0) ? (0 means null token)
+	P0 := P4	// move flg
+	pc := P7, P1	// => RETURN
+@rnz	P0 := mem[@st_tok]	// get tok
+	s2 :bs= mem[@st_sgn]	// get sgn
+	P0 *= P2	// sign tok
+	pc := @psh_done	// push, done
+// rdx 0 block 
+@rad0	(s1 != 0) ? pc := @rad10	//  * rdx 0 block * (rdx != 0) ?
+	P1 := 10	// rdx := 10 (default)
+	mem[@st_rdx] :h= s1	// sto rdx
+	s3 := '-'
+	(s0 != P3) ? pc := @nn	// skip if not neg
+	s3 := -1	// -1
+	mem[@st_sgn] :b= P3	// sto sgn
+	P0 := P4	// move flg
+	pc := P7, P1	// => RETURN
+@nn	s7 := pc := @ch_to_dec	// <=> ch_to_dec()
+	(P0 == 0) ? pc := @upd_done	// do default if num
+	P1 := 256	// rdx := 256
+	mem[@st_rdx] :h= s1	// sto rdx
+	pc := @upd_done	// do default
+// rdx 10 block 
+@rad10	s3 := 10	// * rdx 10 block *
+	(s1 != P3) ? pc := @rad16	// (rdx != 10) ? skip block
+	s2 := mem[@st_tok]	// get tok
+	(P2 != 0) ? pc := @n0x	// chk tok
+	s3 := 'x'
+	(s0 != P3) ? pc := @n0x	// chk ch
+	P1 := 16	// rdx := 16
+	mem[@st_rdx] :h= P1	// sto rdx
+	P0 := P4	// move flg
+	pc := P7	// => RETURN
+@n0x	s7 := pc := @ch_to_dec	// <=> ch_to_dec()
+	P4 |= P0	// update flag
+	pc := @upd_done	// do default
+// rdx 16 block	
+@rad16	s3 := 16	// * rdx 16 block *
+	(s1 != P3) ? pc := @upd_done	// (rdx != 16) ? done
+	s7 := pc := @ch_to_hex	// <=> ch_to_hex()
+	P4 |= P0	// update flag
+@upd_done 	s2 := mem[@st_tok]	// get tok
+	P2 *= P1	// tok *= rdx
+	P2 += P0	// tok += ch
+	mem[@st_tok] := P2	// sto tok
+	s0 := P4	// move flg
+	pc := P7 	// => RETURN
+@psh_done 	s7 := pc := @tok_push	// <=> tok_push()
+	P0 |= P4	// update & move flg
+	pc := P7 }	// ** SUB END **  => RETURN
+
+	
+// TOK_ST_CLR - (7:rtn | -) 
+// tok state clear
+@tok_st_clr {	s3 := 0	// ** TOK_ST_CLR() START **
+	mem[@st_tok] := s3	// tok = 0
+	mem[@st_rdx] :h= P3	// rdx = 0
+	s3 := 1
+	mem[@st_sgn] :b= P3	// sgn = 1
+	pc := P7 }	// ** SUB END **  => RETURN
+
+
+// HCL_PARSE(5:t_addr, 6:s_addr, 7:rtn | 5:t_addr, 6:s_addr) 
+// process tokens and execute commands 
+// STK
+// ---   
+// s0 tok
+// s1 rdx, addr
+// s2 len, stop
+// s3 
+// s4 (ds addr)
+// s5 tok ds addr (thru)
+// s6 str ds addr (thru)
+// s7 rtn
+@hcl_parse { {	s7 := pc := @tok_top	// ** HCL_PARSE() START **  <=> tok_top()
+	(s2 == 0) ? pc := @done	// chk len
+	s3 := 256
+	(s1 != P3) ? pc := @done	// chk rad
+	pc := @esc }	// continue
+// ESC block 
+@esc {	s3 := 0x1b	// * ESC block *
+	(s0 != P3) ? pc := @bksp	// skip block?
+	pc := @clear }	// => clear()
+// BKSP block 
+@bksp {	s3 := 0x8	// * BKSP block *
+	(s0 != P3) ? pc := @params	// skip block?
+	s0 := 2	// bksp distance
+	s7 := pc := @str_bksp	// <=> str_bksp()
+	(P0 != 0) ? pc := @retok	// chk len
+	pc := @clear	// => clear()
+@retok	s7 := pc := @str_to_tok	// <=> str_to_tok()
+	P0	// pop flg
+	pc := @done }	// done
+// PARAMS block 
+@params {	P2--	// * PARAMS block *
+	s3 := 3	// 2 or less is ok
+	(s0 !<u P3) ? pc := @acal	// skip block?
+	pc := @abort }	// => abort()
+// ABORT block 
+@abort {	s7 := pc := @hcl_abort	// * ABORT block *
+	pc := @done }	// => done()
+// UTX_CLEAR block 
+@utx_clear {	s7 := pc := @uint_tx	// * UTX_CLEAR block *
+	pc := @clear }	// => clear()
+// CLEAR block 
+@clear {	s7 := pc := @hcl_clear	// * CLEAR block *
+	pc := @done }	// => done()
+// DONE block 
+@done {	P2 P1 P0	// * DONE block *
+	pc := P7 }	// RETURN =>
+// NEWLN_TX block
+@newln_tx {	s0 := '\n'	// * NEWLN_TX block *
+	s7 := pc := @ch_tx	// => ch_tx()
+	pc := P7 }	// RETURN =>
+// ADDR_TX block
+@addr_tx {	s7 := pc := @newln_tx	// * ADDR_TX block *
+	s0 := '['	// '['
+	s7 := pc := @ch_tx	// => ch_tx()
+	s0 := s1	// copy addr
+	s7 := pc := @uint_tx	// <=> uint_tx()
+	s0 := ']'	// ']'
+	s7 := pc := @ch_tx	// => ch_tx()
+	pc := P7 }	// RETURN =>
+// ACAL block 
+@acal {	s3 := 'acal'	// * ACAL block *
+	(s0 != P3) ? pc := @crc	// skip block?
+	(s2 != 0) ? pc := @abort	// chk !0 params => abort
+	s3 := 1	// immediate
+	mem[@acal_timer_ds] :h= P3	// sto acal_timer
+	pc := @clear }	// => utx_clear()
+// CRC block 
+@crc {	s3 := 'crc'	// * CRC block *
+	(s0 != P3) ? pc := @ver	// skip block?
+	(s2 != 0) ? pc := @abort	// chk !0 params => abort
+	s7 := pc := @newln_tx	// => newln_tx()
+	s0 := `spi_sw_offs	// SPI software offset
+	s7 := pc := @spi_crc32	// <=> spi_crc32()
+	pc := @utx_clear }	// => utx_clear()
+// VER block 
+@ver {	s3 := 'ver'	// * VER block *
+	(s0 != P3) ? pc := @rs	// skip block?
+	(s2 != 0) ? pc := @abort	// chk !0 params => abort
+	s7 := pc := @newln_tx	// => newln_tx()
+	s0 := `spi_sw_offs	// SPI software offset
+	s7 := pc := @spi_ver	// <=> spi_ver()
+	pc := @utx_clear }	// => utx_clear()
+// RS block (read SPI)
+@rs {	s3 := 'rs'	// * RS block *
+	(s0 != P3) ? pc := @rr	// skip block?
+	s7 := pc := @rd_params	// <=> rd_params()
+	s7 := pc := @spi_csn_hi	// <=> spi_csn_hi() (for safety!)
+	s0 := swp(s1)	// addr be <=> le
+	P0 |= 0x3	// addr | 0x3 (spi rd)
+	s7 := pc := @spi_w32	// <=> spi_w32()
+@loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
+	s7 := pc := @spi_r32	// <=> spi_r32()
+	s7 := pc := @uint_tx	// <=> uint_tx()
+	P1 += 4	// addr++
+	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
+	s7 := pc := @spi_csn_hi	// <=> spi_csn_hi()
+	pc := @clear }	// => clear()
+// RR block (read reg)
+@rr {	s3 := 'rr'	// * RR block *
+	(s0 != P3) ? pc := @rm	// skip block?
+	s7 := pc := @rd_params	// <=> rd_params()
+@loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
+	s0 := reg[s1]	// read reg data
+	s7 := pc := @uint_tx	// <=> uint_tx()
+	P1++	// addr++
+	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
+	pc := @clear }	// => clear()
+// RM block (read mem)
+@rm {	s3 := 'rm'	// * RM block *
+	(s0 != P3) ? pc := @rk	// skip block?
+	s7 := pc := @rd_params	// <=> rd_params()
+@loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
+	s0 := mem[s1]	// read mem data
+	s7 := pc := @uint_tx	// <=> uint_tx()
+	P1 += 4	// addr++
+	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
+	pc := @clear }	// => clear()
+// RK block (read knob)
+@rk {	s3 := 'rk'	// * RK block *
+	(s0 != P3) ? pc := @ws	// skip block?
+	s7 := pc := @rd_params	// <=> rd_params()
+@loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
+	s7 := pc := @knob_param_ptr	// <=> knob_param_ptr()
+	s0 :bu= mem[P4+4]	// rd knob
+	s7 := pc := @uint_tx	// <=> uint_tx()
+	P1 += 1	// knob++
+	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
+	pc := @clear }	// => clear()
+// WS block (write SPI)
+// before : issue write latch enable (write 0x100, 6, 0x100 to spi reg[6])
+// after  : issue CSn high (write 0x100 to spi reg[6])
+@ws {	s3 := 'ws'	// * WS block *
+	(s0 != P3) ? pc := @wr	// skip block?
+	(s2 == 0) ? pc := @abort	// chk 0 params => abort
+	s3 := 1
+	(s2 == P3) ? pc := @p_1	// chk 1 param
+	s0 := mem[s5+4]	// get addr tok
+	P0 := swp(s0)	// addr be <=> le
+	P0 |= 0x2	// addr | 0x2 (spi wr)
+	s7 := pc := @spi_w32	// <=> spi_w32()
+	s0 := mem[s5+8]	// get data tok
+	s7 := pc := @spi_w32	// <=> spi_w32()
+	pc := @clear	// => clear()
+@p_1	s0 := mem[s5+4]	// get data tok
+	s7 := pc := @spi_w32	// <=> spi_w32()
+	pc := @clear }	// => clear()
+// WR block (write reg)
+@wr {	s3 := 'wr'	// * WR block *
+	(s0 != P3) ? pc := @wm	// skip block?
+	s7 := pc := @wr_params	// <=> wr_params()
+	reg[s1] := s2	// write reg data
+	s7 := pc := @addr_tx	// <=> addr_tx()
+	s0 := reg[s1]	// read reg data
+	pc := @utx_clear }	// => utx_clear()
+// WM block (write mem)
+@wm {	s3 := 'wm'	// * WM block *
+	(s0 != P3) ? pc := @wb	// skip block?
+	s7 := pc := @wr_params	// <=> wr_params()
+	mem[s1] := s2	// write mem data
+	s7 := pc := @addr_tx	// <=> addr_tx()
+	s0 := mem[s1]	// read mem data
+	pc := @utx_clear }	// => utx_clear()
+// WB block (write byte mem)
+@wb {	s3 := 'wb'	// * WB block *
+	(s0 != P3) ? pc := @wk	// skip block?
+	s7 := pc := @wr_params	// <=> wr_params()
+	mem[s1] :b= s2	// write mem data
+	s7 := pc := @addr_tx	// <=> addr_tx()
+	s0 :bu= mem[s1]	// read mem data
+	pc := @utx_clear }	// => utx_clear()
+// WK block (write knob)
+@wk {	s3 := 'wk'	// * WK block *
+	(s0 != P3) ? pc := @abort	// skip block?
+	s7 := pc := @wr_params	// <=> wr_params()
+	s7 := pc := @knob_param_ptr	// <=> knob_param_ptr()
+	mem[s4+4] :b= s2	// write mem data
+	s1 := ~s1	// not (has ones even if zero)
+	mem[`@pre_upd_ds] :b= P1	// sto pre_upd
+	s7 := pc := @addr_tx	// <=> addr_tx()
+	s0 :bu= mem[P4+4]	// read mem data
+	pc := @utx_clear } }	// => utx_clear()
+
+	
+// RD_PARAMS(1:rdx, 2:params, 5:t_addr, 7:rtn | 1:addr, 2:stop, 5:t_addr) 
+// 0 params: get addr & stop from ds
+// 1,2 params: get addr from token & sto in ds
+// 1 params: stop = addr
+// 2 params: get stop from token & sto in ds
+@rd_params {	(s2 != 0) ? pc := @p_1_2	// ** RD_PARAMS() START **  0 params
+	P1 := mem[@rd_ds]	// get addr
+	P2 := mem[@rd_ds+4]	// get stop
+	pc := P7 	// RETURN =>
+@p_1_2	P1 := mem[s5+4]	// 1 or 2 params, get addr tok
+	mem[@rd_ds] := s1	// sto addr
+	s3 := 2
+	(s2 == P3) ? pc := @p_2	// 1 param
+	P2 := s1	// stop := addr
+	mem[@rd_ds+4] := s2	// sto stop
+	pc := P7 	// RETURN =>
+@p_2	P2 := mem[s5+8]	// 2 params
+	mem[@rd_ds+4] := s2	// get stop tok, sto stop
+	pc := P7 	// RETURN =>  ** SUB END **
+@rd_ds	mem[1] :=  ( 0 )	// addr * rd_ds *
+	mem[1] :=  ( 0 ) }	// stop 
+
+	
+// WR_PARAMS(1:rdx, 2:params, 5:t_addr, 7:rtn | 1:addr, 2:data, 5:t_addr) 
+// 0 params: get addr & data from ds
+// 1,2 params: get data from token & sto in ds
+// 1 params: get addr from ds
+// 2 params: get addr from token & sto in ds
+@wr_params {	(s2 != 0) ? pc := @p_1_2	// ** WR_PARAMS() START **  0 params
+	P1 := mem[@wr_ds]	// get addr
+	P2 := mem[@wr_ds+4]	// get data
+	pc := P7 	// RETURN =>
+@p_1_2	s3 := 2	// 1 or 2 params
+	(s2 == P3) ? pc := @p_2	// 1 param
+	P1 := mem[@wr_ds]	// get addr
+	P2 := mem[s5+4]	// get data tok
+	mem[@wr_ds+4] := s2	// sto data
+	pc := P7 	// RETURN =>
+@p_2	P1 := mem[s5+4]	// 2 params, get addr tok
+	P2 := mem[s5+8]	// get data tok
+	mem[@wr_ds] := s1	// sto addr
+	mem[@wr_ds+4] := s2	// sto data
+	pc := P7	// RETURN =>  ** SUB END **
+@wr_ds	mem[1] :=  ( 0 )	// addr * wr_ds *
+	mem[1] :=  ( 0 ) } 	// data 
+
+
+// HCL_INIT(7:rtn | -)
+// initialize hcl system
+@hcl_init {	s6 := @hcl_str_ds	// ** HCL_INIT() START **  string addr - here forever!
+	s5 := @hcl_tok_ds	// token addr - here forever!
+	s7 := pc := @hcl_clear	// <=> hcl_clear()
+	pc := P7	// RETURN =>
+@hcl_str_ds {	mem[1] :b= ( 0 )	// len ** HCL_STR_DS **
+	mem[1] :b= ( 32 )	// lim
+	mem[32] :b= ( 0 ) }	// ch
+@hcl_tok_ds {	mem[1] :b= ( 0 )	// len  ** HCL_TOK_DS **
+	mem[1] :b= ( 4 )	// lim
+	mem[1] :h= ( 0 )	// rdx
+	mem[4] :=  ( 0 ) } }	// tok  ** SUB END **
+
+
+// HCL(7:rtn | -)
+// get ch via RX UART, echo ch to TX UART, push ch to ch store, tokenize, parse
+@hcl {	s0 := reg[`reg_uart_rx]	// ** HCL() START **  read rx uart
+	(s0 !< 0) ? pc := @ch_ok	// (ch !< 0) ? not neg = not empty
+	pc := P7, P0	// RETURN =>
+@ch_ok	s7 := pc := @ch_echo	// <=> ch_echo()
+	s0 := s0	// copy ch
+	s7 := pc := @str_push	// <=> str_push()
+	s7 := pc := @ch_to_tok	// <=> ch2tok()
+	(P0 == 0) ? pc := @ok_tok	// chk error
+	s7 := pc := @hcl_abort	// <=> hcl_abort()
+@ok_tok	s7 := pc := @hcl_parse	// <=> hcl_parse()
+	pc := @hcl }	// back to start
+
+
+	
+// HCL_ABORT(5:t_addr, 6:s_addr, 7:rtn | 5:t_addr, 6:s_addr)
+// "\n?" to TX UART, do clear
+@hcl_abort {	s0 := '\n'	// ** HCL_ABORT() START **  '\n'
+	s7 := pc := @ch_tx	// <=> ch_tx()
+	s0 := '?'
+	s7 := pc := @ch_tx	// <=> ch_tx()
+	s7 := pc := @hcl_clear	// <=> hcl_clear()
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// HCL_CLEAR(5:t_addr, 6:s_addr, 7:rtn | 5:t_addr, 6 s_addr)
+// clear str, token, output "\n>" to TX UART
+@hcl_clear {	s7 := pc := @str_clr	// ** HCL_CLEAR() START **  <=> str_clr()
+	s7 := pc := @tok_clr	// <=> tok_clr()
+	s0 := '\n'	// '\n'
+	s7 := pc := @ch_tx	// <=> ch_tx()
+	s0 := '>'	// '>'
+	s7 := pc := @ch_tx	// <=> ch_tx()
+	pc := P7 }	// RETURN =>  ** SUB END **
+	
+
+////////////////
+// data store //
+////////////////
+@st_tok {	mem[1] :=  ( 0 ) }	// st_tok  ** TOK_ST DS **
+@st_rdx {	mem[1] :h= ( 0 ) }	// st_rdx
+@st_sgn {	mem[1] :b= ( 1 ) }	// st_sgn
+

@@ -1,0 +1,504 @@
+// UI(7:rtn | 0:chg_vector) 
+// perform user interface tasks
+// if (ext) => ui_ext()
+// else if (int) => ui_int()
+// else do_sculpt()
+// note: gpio_act_ds[15:0], pb_act_ds[7:0], enc_chg_ds[7:0] } are stored sequentially!
+@ui {	s7 := pc := @enc_upd	// // ** UI() START ** <=> enc_upd()
+	s7 := pc := @gpio_upd	// <=> gpio_upd()
+	s7 := pc := @form_flg_upd	// <=> form_flg_upd()
+	s0 :bu= mem[`@pre_upd_ds]	// get pre_upd
+	(s0 != 0) ? pc := @ui_ext	// (pre_upd != 0) ? => ui_ext(pre_upd)
+	P0 := mem[@enc_chg_ds]	// int_act := {gpio_act, pb_act, enc_chg} (4 bytes)
+	P0 <<= 14	// limit gpio_act[15:0] to [1:0]
+	(P0 != 0) ? pc := @ui_int	// (int_act != 0) ? => ui_int()
+	s7 := pc := @do_sculpt	// <=> do_sculpt()
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// UI_EXT(0:pre_upd, 7:rtn | -) 
+// perform external user interface tasks
+// only called if something to do
+// note: ~pre_upd to give non-zero value when active, must restore
+@ui_ext {	s7 := pc := @params_use_upd	// ** UI_EXT() START **  <=> params_use_upd()
+	P0 := ~s0	// ~pre_upd (restore)
+	P0 &= 0xff	// mask [7:0]
+	s7 := pc := @do_knob	// <=> do_knob()
+	P0 := 0	// 0 (pop knob)
+	mem[`@pre_upd_ds] := P0	// clear pre_upd
+	s7 := pc := @lcd_upd	// <=> lcd_upd()
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// UI_INT(7:rtn |-) 
+// perform internal user interface tasks
+// only called if something to do
+@ui_int {	s7 := pc := @params_page_upd	// ** UI_INT() START **  <=> params_page_upd()
+	s7 := pc := @do_gpio	// <=> do_gpio()
+	s7 := pc := @do_pb	// <=> do_pb()
+	s7 := pc := @do_enc	// <=> do_enc()
+	s7 := pc := @lcd_upd	// <=> lcd_upd()
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+	
+// DO_GPIO(7:rtn | -) 
+// handle gpio input events
+// return if nothing to do
+@do_gpio {	s0 :bu= mem[@gpio_act_ds]	// ** DO_GPIO() START **  get gpio_act[7:0]
+	(s0 != 0) ? pc := @_mute
+	pc := P7, P0	//  => RETURN
+@_mute	s0 &= 0x1	// mask gpio_act[0] (mute) (cpy)
+	(P0 == 0) ? pc := @_acal	// (gpio_act[0] == 0) ? skip
+	s0 := mem[@v_p7_ds] 	// get Out
+	P0 ^= 1	// invert lsb
+	s7 := pc := @mute_wr	// <=> mute_wr()
+@_acal	P0 &= 0x2	// mask gpio_act[1] (acal)
+	(P0 == 0) ? pc := @done	// (gpio_act[1] == 0) ? skip
+	s7 := pc := @do_acal	// <=> do_acal()
+@done	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// DO_PB(7:rtn | -) 
+// handle special pb events
+// return if nothing to do
+@do_pb {	s0 :bu= mem[@pb_act_ds]	// ** DO_PB() START **  get pb_act[7:0]
+	(s0 != 0) ? pc := @cont
+	pc := P7, P0	//  => RETURN
+@cont	s7 := pc := @onehot_to_knob	// <=> onehot_to_knob()
+@_acal	s1 := `out_knob	// out enc val
+	(s0 != P1) ? pc := @_stor	// (pb != out_enc) ?
+	s7 := pc := @do_acal	// <=> do_acal()
+	pc := @done
+@_stor	s1 := `stor_knob	// stor knob val
+	(s0 != P1) ? pc := @_Stor	// (knob != stor_enc) ?
+	s0 := mem[@ps_p1_ds]	// get preset
+	s1 := -1	// sys_f := -1 (pre)
+	s7 := pc := @do_stor	// <=> do_stor()
+	pc := @done
+@_Stor	s1 := `Stor_knob	// Stor knob val
+	(s0 != P1) ? pc := @_knob	// (knob != Stor_enc) ?
+	s0 := mem[@ps_p3_ds]	// get profile
+	s1 := 1	// sys_f := 1 (pro)
+	s7 := pc := @do_stor	// <=> do_stor()
+	pc := @done
+@_knob	s7 := pc := @do_knob	// <=> do_knob()  tricky!
+@done	pc := P7, P0 }	//  => RETURN  ** SUB END **
+
+
+// DO_ENC(7:rtn | -) 
+// handle special encoder events
+// return if nothing to do
+@do_enc {	s0 :bu= mem[@enc_chg_ds]	// ** DO_ENC() START **  get enc_chg[7:0]
+	(s0 != 0) ? pc := @cont
+	pc := P7, P0	//  => RETURN
+@cont	s7 := pc := @onehot_to_knob	// <=> onehot_to_knob()
+	s7 := pc := @do_knob	// <=> do_knob()
+	pc := P7, P0 }	//  => RETURN  ** SUB END **
+
+
+// DO_KNOB(0:knob, 7:rtn | 0:knob) 
+// handle special knob events
+// only called if something to do
+@do_knob {	s1 := `load_knob	// ** DO_KNOB() START **  load knob val
+	(s0 != P1) ? pc := @_Load	// (knob != load_enc) ?
+	s0 := mem[@ps_p0_ds]	// get preset
+	s1 := -1	// sys_f := -1 (pre)
+	pc := @ld_done	// load & done
+@_Load	s1 := `Load_knob	// Load knob val
+	(s0 != P1) ? pc := @done	// (knob != Load_enc) ?
+	s0 := mem[@ps_p2_ds]	// get profile
+	s1 := 1	// sys_f := 1 (pro)
+@ld_done	s7 := pc := @do_load	// <=> do_load()
+@done	s7 := pc := @sys_regs_upd	// <=> sys_regs_upd()
+	s7 := pc := @wr_st_clr	// <=> wr_st_clr()
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// DO_LOAD(0:preset/profile, 1:sys_f, 7:rtn | -) 
+// if sys_flg<0 load preset
+// else load profile
+@do_load {	s2 := @ps_p0_ds	// ** DO_LOAD() START **  preset load enc use addr
+	(s1 < 0) ? pc := @pre	// (sys_f < 0) ? pre
+	P2 += 20	// profile load enc use addr
+@pre	mem[s2+10] := s0	// stor := load
+	mem[P2+14] :b= s0
+	s7 := pc := @pre_pro_load	// <=> pre_pro_load()
+	s7 := pc := @sys_regs_upd	// <=> sys_regs_upd()
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// DO_STOR(0:preset/profile, 1:sys_f, 7:rtn | -) 
+// if sys_flg<0 store preset
+// else store profile
+@do_stor {	s2 :bu= mem[@wr_st_ds]	// get wr_st
+	(P2 != 0) ? pc := @stor	// (wr_st != 0) ? stor
+	s7 := pc := @wr_st_set	// <=> wr_st_set()
+	P1 P0
+	pc := @done	// => done
+@stor	s2 := @ps_p0_ds	// preset load enc use addr
+	(s1 < 0) ? pc := @pre	// (sys_f < 0) ? pre
+	P2 += 20	// profile load enc use addr
+@pre	mem[s2] := s0	// load := stor
+	mem[P2+4] :b= s0
+	s7 := pc := @pre_pro_stor	// <=> pre_pro_stor()
+	s7 := pc := @wr_st_clr	// <=> wr_st_clr()
+@done	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// WR_ST_SET(7:rtn | -) 
+// write state set
+// note: change label at both stor and Stor knobs (one won't be seen)
+@wr_st_set {	s0 := 1	// ** WR_ST_SET() START **
+	mem[@wr_st_ds] :b= P0	// wr_st := 1
+	s0 := '?RW?'	// display armed lbl
+	mem[@ps_p1_ds+6] := s0	// 
+	mem[@ps_p3_ds+6] := P0	// 
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+	
+// WR_ST_CLR(7:rtn | -) 
+// write state clear
+@wr_st_clr {	s0 := 0	// ** WR_ST_CLR() START **
+	mem[@wr_st_ds] :b= P0	// wr_st := 0
+	s0 := 'rots'	// restore usr lbl
+	mem[@ps_p1_ds+6] := P0	// 
+	s0 := 'rotS'	// restore sys lbl
+	mem[@ps_p3_ds+6] := P0	// 
+	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// ONEHOT_TO_KNOB(0:one-hot, 7:rtn | 0:knob) 
+// note: returns -1 if one-hot=0 !
+@onehot_to_knob {	s7 := pc := @onehot_to_int	// ** ONEHOT_TO_KNOB() START **  <=> onehot_to_int()
+	(s0 < 0) ? pc := @done	// (one-hot < 0) ? return -1
+	s1 := mem[@menu_page_ds]	// get menu_page
+	P1 <<= 3	// menu_page * 8
+	P0 +u= P1	// add
+@done	pc := P7 }	// => RETURN ** SUB END **
+
+
+// DO_SCULPT(7:rtn | -) 
+@do_sculpt {	s1 :bs= mem[@p_hyst_ds]	// ** DO_SCULPT() START **  get p_hyst
+	s0 :bs= mem[@ph_old_ds]	// get ph_old
+	mem[@ph_old_ds] :b= s1	// sto ph_old
+	(P1 !< 0) ? pc := @done	// (p_hyst !< 0) ?
+	(s0 !< 0) ? pc := @cont	// (ph_old !< 0) ?
+@done	pc := P7, P0	//  => RETURN
+@cont	P0 := mem[@ps_p0_ds]	// get load preset val
+	P0++	// preset++
+	s2 := mem[@p_p7_ds]	// get Auto[0:249]
+	(s0 <u P2) ? pc := @p_lt_a	// (preset++ < Auto) ?
+	P0 := 0	// preset := 0
+@p_lt_a	mem[@ps_p0_ds] := s0	// sto load preset val
+	mem[@ps_p0_ds+4] :b= s0	// sto load preset enc val
+	s1 := -1	// sys_f := -1 (pre)
+	s7 := pc := @do_load	// <=> do_load()
+	s7 := pc := @lcd_upd	// <=> lcd_upd()
+	pc := P7	//  => RETURN
+@ph_old_ds {	mem[1] :b= ( 0 ) } }	// ** PH_OLD_DS **  ** SUB END **
+
+
+// DO_ACAL(7:rtn | -) 
+// load acal timer
+// update mute flag
+// auto mute
+// max Wait knob value is 2^16 / 480 = 136
+@do_acal {	s0 := mem[@s_p6_ds]	// ** DO_ACAL() START **  get Wait[0:99]
+	s0 *= 480	// Wait * 48kHz/100 (cpy)
+	P0++	// acal_timer := (Wait * 48kHz/100) + 1 (1 is min delay)
+	mem[@acal_timer_ds] :h= P0	// sto acal_timer
+	(P0 == 0) ? pc := @done	// (Wait == 0) ? done (bypass auto-mute)
+	s0 := mem[@v_p7_ds] 	// get Out
+	mem[@unmute_f_ds] :b= P0	// sto unmute flag
+	s0 := 0	// mute
+	s7 := pc := @mute_wr	// <=> mute_wr()
+@done	pc := P7 }	//  => RETURN  ** SUB END **
+
+
+// ACAL_TIMER(7:rtn | -) 
+// check & dec acal_timer_ds when called
+// do acal at timeout
+// called at 4.8kHz ISR rate
+@acal_timer {	s0 :hu= mem[@acal_timer_ds]	// ** ACAL_TIMER() START **  get timer
+	(s0 == 0) ? pc := @done	// (timer == 0) ? done
+	P0--	// timer--
+	mem[@acal_timer_ds] :h= s0	// sto timer
+	(s0 != 0) ? pc := @done	// (timer != 0) ? done
+	s7 := pc := @acal	// <=> acal()
+@done	pc := P7, P0 }	// RETURN =>  ** SUB END **
+@acal_timer_ds {	mem[1] :h= ( 4800 ) }	// ** ACAL_TIMER_DS **  (1 sec @ boot)
+
+
+// ACAL(7:rtn | -) 
+// set nulls with current operating points
+@acal {	s0 := mem[@p_flt_ds]	// ** ACAL() START **  get filtered pitch  
+	mem[@p_nul_ds] := P0	// set p_nul
+	s0 := mem[@v_flt_ds]	// get filtered vol
+	mem[@v_nul_ds] := P0	// set v_nul
+	pc := P7 }	// => RETURN  ** SUB END **
+
+// MUTE_WR(0:out, 7:rtn | -) 
+@mute_wr {	mem[@v_p7_ds] := s0 	// ** MUTE_WR() START **  sto Out use 
+	mem[@v_p7_ds+4] :b= P0 	// sto Out enc
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+// UNMUTE(7:rtn | -) 
+@unmute {	s0 :hu= mem[@acal_timer_ds]	// ** UNMUTE() START **  get timer
+	(P0 != 0) ? pc := @done	// (timer != 0) ? done
+	s0 :bu= mem[@unmute_f_ds]	// get flag
+	(P0 == 0) ? pc := @done	// (flag == 0) ? done
+	s0 := mem[@vl_mod_ds]	// get vl_mod
+	(P0 != 0) ? pc := @done	// (vl_mod != 0) ? done
+	s0 := 0	// reset flag
+	mem[@unmute_f_ds] :b= P0
+	s0 := 1	// unmute
+	s7 := pc := @mute_wr	// <=> mute_wr()
+	s7 := pc := @lcd_upd	// <=> lcd_upd()
+@done	pc := P7 }	// RETURN =>  ** SUB END **
+@unmute_f_ds {	mem[1] :b= ( 0 ) }	// ** UNMUTE_F_DS **
+
+
+// ERROR_CHK(7:rtn | -) 
+// read proc error register
+// if non-zero write "ER! " to D-LEV UI screen
+// stays until reboot
+@error_chk {	s0 := reg[`reg_error]	// ** ERROR_CHK() START **  get proc err  
+	(P0 == 0) ? pc := @rtn	// (err == 0) ? return
+@nz	s1 := ' !RE'	// ' !RE' (ER! ) 
+	mem[@menu_pg_titles] := P1	// to D-LEV UI screen
+@rtn	pc := P7 }	// => RETURN =>  ** SUB END **
+
+
+// SYS_REGS_UPD(7:rtn | -) 
+// system regs update
+// xfer dither knob values to DPLLs
+@sys_regs_upd {	s4 := mem[@s_p1_ds]	// ** SYS_REGS_UPD() START **  get s_p1 (Dith - pitch)  
+	s5 := mem[@s_p4_ds]	// get s_p4 (Dith - volume)
+	reg[`reg_pitch] := P4	// reg wr
+	reg[`reg_volume] := P5	// reg wr
+	pc := P7 }	// => RETURN  ** SUB END **
+
+	
+// MENU_PARAM_PTR(0:page, 1:offs, 7:rtn | 4:param_ptr) 
+// return menu param pointer given page and offset
+// 8 knobs per UI page
+// 20 UI pages
+// the menu_page knob is replicated on each UI page
+@menu_param_ptr {	P0 <<= 3	// ** MENU_PARAM_PTR() START **  page * 8
+	P1 +u= P0	// knob := offs + (page * 8)
+	s7 := pc := @knob_param_ptr	// <=> knob_param_ptr()
+	pc := P7, P1 }	// => RETURN  ** SUB END **
+
+
+// KNOB_PARAM_PTR(1:knob, 7:rtn | 1:knob, 4:param_ptr) 
+// return menu param pointer given knob
+// 8 knobs per UI page
+// 20 UI pages
+// the menu_page knob is replicated on each UI page
+@knob_param_ptr {	s0 := s1 >> 3	// ** KNOB_PARAM_PTR() START **  page := knob/8
+	s4 := 7	// 7
+	s1 &= s4	// offs := knob[2:0] (cpy)
+	(s1 != s4) ? pc := @n7	// (offs != 7) ?
+	P4 := @menu_page_ds, P0	// menu page addr (pop mask & page)
+	pc := P7, P1	// => RETURN (pop offs)
+@n7	P0 *u= P4	// page * 7
+	P1 +u= P0	// knob := offs + (page * 7)
+	P1 *u= 2	// knob * 2
+	s4 := @menu_param_ptr_ds	// ptr table base addr (2 byte steps)
+	P4 +u= P1	// offset
+	P4 :hu= mem[s4]	// rd ptr
+	pc := P7 }	// => RETURN  ** SUB END **
+
+
+/////////////////
+// data stores //
+/////////////////
+@wr_st_ds {	mem[1] :b= ( 0 ) }	// ** WR_ST_DS **
+@pre_init_ds {	mem[1] :h= ( 0 ) }	// ** PRE_INIT_DS **
+@p_hyst_ds {	mem[1] :b= ( 0 ) }	// ** P_HYST_DS **
+
+	
+// menu param pointers	// D-Lev:
+@menu_param_ptr_ds {	mem[1] :h= ( @v_p6_ds ) 	// V_P6 - Mon  ** MENU_PARAM_PTR_DS **
+	mem[1] :h= ( @v_p7_ds ) 	// V_P7 - Out
+	mem[1] :h= ( @v_p0_ds ) 	// V_P0 - Vcal
+	mem[1] :h= ( @p_p0_ds ) 	// P_P0 - Pcal
+	mem[1] :h= ( @ps_p1_ds )	// PS_P1 - stor
+	mem[1] :h= ( @b_p0_ds )	// B_P0 - bank
+	mem[1] :h= ( @ps_p0_ds )	// PS_P0 - load
+	// LEVELS:
+	mem[1] :h= ( @v_p6_ds ) 	// V_P6 - Mon
+	mem[1] :h= ( @v_p8_ds ) 	// V_P8 - Line
+	mem[1] :h= ( @pp_p0_ds )	// PP_P0 - prev
+	mem[1] :h= ( @eq_p1_ds )	// EQ_P1 - Treb
+	mem[1] :h= ( @o_p0_ds )	// O_P0 - osc
+	mem[1] :h= ( @eq_p0_ds )	// EQ_P0 - Bass
+	mem[1] :h= ( @n_p0_ds )	// N_P0 - nois
+	// PREVIEW:
+	mem[1] :h= ( @pp_p6_ds )	// PP_P6 - vmod
+	mem[1] :h= ( @pp_p3_ds )	// PP_P3 - pmod
+	mem[1] :h= ( @pp_p0_ds )	// PP_P0 - prev
+	mem[1] :h= ( @pp_p4_ds )	// PP_P4 - mode
+	mem[1] :h= ( @pp_p1_ds )	// PP_P1 - harm
+	mem[1] :h= ( @pp_p5_ds )	// PP_P5 - tone
+	mem[1] :h= ( @pp_p2_ds )	// PP_P2 - oct
+	// MIDI:
+	mem[1] :h= ( @m_p1_ds ) 	// M_P1 - vloc
+	mem[1] :h= ( @m_p4_ds ) 	// M_P4 - velo
+	mem[1] :h= ( @m_p6_ds ) 	// M_P6 - cloc
+	mem[1] :h= ( @m_p5_ds ) 	// M_P5 - cc
+	mem[1] :h= ( @m_p2_ds ) 	// M_P2 - bend
+	mem[1] :h= ( @m_p0_ds ) 	// M_P0 - chan
+	mem[1] :h= ( @m_p3_ds ) 	// M_P3 - oct
+	// VOLUME:
+	mem[1] :h= ( @e_p0_ds ) 	// E_P0 - kloc
+	mem[1] :h= ( @e_p3_ds ) 	// E_P3 - rise
+	mem[1] :h= ( @e_p1_ds ) 	// E_P1 - knee
+	mem[1] :h= ( @e_p2_ds )	// E_P2 - fall
+	mem[1] :h= ( @e_p4_ds )	// E_P4 - velo
+	mem[1] :h= ( @e_p5_ds )	// E_P5 - damp
+	mem[1] :h= ( @e_p6_ds )	// E_P6 - dloc
+	// PITCH:
+	mem[1] :h= ( @pc_p4_ds )	// PC_P4 - vmod
+	mem[1] :h= ( @pc_p0_ds )	// PC_P0 - cmod
+	mem[1] :h= ( @pc_p1_ds )	// PC_P1 - rate
+	mem[1] :h= ( @e_p7_ds )	// E_P7 - cvol
+	mem[1] :h= ( @pc_p3_ds )	// PC_P3 - corr
+	mem[1] :h= ( @pc_p2_ds )	// PC_P2 - span
+	mem[1] :h= ( @t_p2_ds )	// T_P2 - Post
+	// NOISE:
+	mem[1] :h= ( @n_p9_ds )	// N_P9 - vmod
+	mem[1] :h= ( @n_p8_ds )	// N_P8 - pmod
+	mem[1] :h= ( @n_p0_ds )	// N_P0 - nois
+	mem[1] :h= ( @n_p13_ds )	// N_P13 - treb
+	mem[1] :h= ( @n_p10_ds )	// N_P10 - puls
+	mem[1] :h= ( @n_p11_ds )	// N_P11 - bass
+	mem[1] :h= ( @n_p14_ds )	// N_P14 - duty
+	// FLT_NOISE:
+	mem[1] :h= ( @n_p7_ds )	// N_P7 - vmod
+	mem[1] :h= ( @n_p6_ds )	// N_P6 - pmod
+	mem[1] :h= ( @n_p3_ds )	// N_P3 - freq
+	mem[1] :h= ( @n_p0_ds )	// N_P0 - nois
+	mem[1] :h= ( @n_p5_ds )	// N_P5 - mode
+	mem[1] :h= ( @n_p12_ds )	// N_P12 - xmix
+	mem[1] :h= ( @n_p4_ds )	// N_P4 - reso
+	// 0_OSC:
+	mem[1] :h= ( @o_p4_ds )	// O_P4 - vmod
+	mem[1] :h= ( @o_p3_ds )	// O_P3 - pmod
+	mem[1] :h= ( @o_p2_ds )	// O_P2 - harm
+	mem[1] :h= ( @o_p15_ds )	// O_P15 - treb
+	mem[1] :h= ( @o_p1_ds )	// O_P1 - odd
+	mem[1] :h= ( @o_p14_ds )	// O_P14 - bass
+	mem[1] :h= ( @o_p5_ds )	// O_P5 - oct
+	// 1_OSC:
+	mem[1] :h= ( @o_p6_ds )	// O_P6 - offs
+	mem[1] :h= ( @o_p18_ds )	// O_P18 - offs
+	mem[1] :h= ( @o_p16_ds )	// O_P16 - hmul
+	mem[1] :h= ( @o_p17_ds )	// O_P17 - hmul
+	mem[1] :h= ( @o_p8_ds )	// O_P8 - fm
+	mem[1] :h= ( @o_p19_ds )	// O_P19 - sprd
+	mem[1] :h= ( @o_p7_ds )	// O_P7 - xmix
+	// FLT_OSC:
+	mem[1] :h= ( @o_p13_ds )	// O_P13 - vmod
+	mem[1] :h= ( @o_p12_ds )	// O_P12 - pmod
+	mem[1] :h= ( @o_p9_ds )	// O_P9 - freq
+	mem[1] :h= ( @o_p0_ds )	// O_P0 - osc
+	mem[1] :h= ( @o_p11_ds )	// O_P11 - mode
+	mem[1] :h= ( @o_p20_ds )	// O_P20 - xmix
+	mem[1] :h= ( @o_p10_ds )	// O_P10 - reso
+	// RESON:
+	mem[1] :h= ( @r_p2_ds )	// R_P2 - freq
+	mem[1] :h= ( @r_p3_ds )	// R_P3 - tap
+	mem[1] :h= ( @r_p4_ds )	// R_P4 - hpf
+	mem[1] :h= ( @r_p1_ds )	// R_P1 - harm
+	mem[1] :h= ( @r_p6_ds )	// R_P6 - mode
+	mem[1] :h= ( @r_p5_ds )	// R_P5 - xmix
+	mem[1] :h= ( @r_p0_ds )	// R_P0 - reso
+	// 0_FORM:
+	mem[1] :h= ( @f_p7_ds )	// F_P7 - vmod
+	mem[1] :h= ( @f_p6_ds )	// F_P6 - pmod
+	mem[1] :h= ( @f_p0_ds )	// F_P0 - freq
+	mem[1] :h= ( @f_p1_ds )	// F_P1 - levl
+	mem[1] :h= ( @f_p14_ds )	// F_P14 - freq
+	mem[1] :h= ( @f_p15_ds )	// F_P15 - levl
+	mem[1] :h= ( @f_p12_ds )	// F_P12 - reso
+	// 1_FORM:
+	mem[1] :h= ( @f_p9_ds )	// F_P9 - vmod
+	mem[1] :h= ( @f_p8_ds )	// F_P8 - pmod
+	mem[1] :h= ( @f_p2_ds )	// F_P2 - freq
+	mem[1] :h= ( @f_p3_ds )	// F_P3 - levl
+	mem[1] :h= ( @f_p16_ds )	// F_P16 - freq
+	mem[1] :h= ( @f_p17_ds )	// F_P17 - levl
+	mem[1] :h= ( @f_p13_ds )	// F_P13 - reso
+	// 2_FORM:
+	mem[1] :h= ( @f_p11_ds )	// F_P11 - vmod
+	mem[1] :h= ( @f_p10_ds )	// F_P10 - pmod
+	mem[1] :h= ( @f_p4_ds )	// F_P4 - freq
+	mem[1] :h= ( @f_p5_ds )	// F_P5 - levl
+	mem[1] :h= ( @f_p22_ds )	// F_P22 - freq
+	mem[1] :h= ( @f_p23_ds )	// F_P23 - levl
+	mem[1] :h= ( @f_p20_ds )	// F_P20 - reso
+	// 3_FORM:
+	mem[1] :h= ( @f_p27_ds )	// F_P27 - vmod
+	mem[1] :h= ( @f_p26_ds )	// F_P26 - pmod
+	mem[1] :h= ( @f_p18_ds )	// F_P18 - freq
+	mem[1] :h= ( @f_p19_ds )	// F_P19 - levl
+	mem[1] :h= ( @f_p24_ds )	// F_P24 - freq
+	mem[1] :h= ( @f_p25_ds )	// F_P25 - levl
+	mem[1] :h= ( @f_p28_ds )	// F_P28 - reso
+	// V_FIELD:
+	mem[1] :h= ( @v_p0_ds ) 	// V_P0 - Vcal
+	mem[1] :h= ( @v_p4_ds )	// V_P4 - Drop
+	mem[1] :h= ( @v_p1_ds )	// V_P1 - Lin
+	mem[1] :h= ( @s_p4_ds )	// S_P4 - Dith
+	mem[1] :h= ( @v_p2_ds )	// V_P2 - Ofs-
+	mem[1] :h= ( @v_p5_ds )	// V_P5 - Ofs+
+	mem[1] :h= ( @v_p3_ds )	// V_P3 - Sens
+	// P_FIELD:
+	mem[1] :h= ( @p_p0_ds ) 	// P_P0 - Pcal
+	mem[1] :h= ( @p_p6_ds )	// P_P5 - Lift
+	mem[1] :h= ( @p_p1_ds )	// P_P1 - Lin
+	mem[1] :h= ( @s_p1_ds )	// S_P1 - Dith
+	mem[1] :h= ( @p_p2_ds )	// P_P2 - Ofs-
+	mem[1] :h= ( @p_p4_ds )	// P_P4 - Ofs+
+	mem[1] :h= ( @p_p3_ds )	// P_P3 - Sens
+	// DISPLAY:
+	mem[1] :h= ( @t_p0_ds )	// T_P0 - Brit
+	mem[1] :h= ( @p_p5_ds )	// P_P5 - Cent
+	mem[1] :h= ( @s_p5_ds )	// S_P5 - LCD
+	mem[1] :h= ( @t_p3_ds )	// T_P3 - Note
+	mem[1] :h= ( @t_p1_ds )	// T_P1 - Qant
+	mem[1] :h= ( @t_p4_ds )	// T_P4 - Oct
+	mem[1] :h= ( @t_p2_ds )	// T_P2 - Post
+	// SYSTEM:
+	mem[1] :h= ( @s_p6_ds )	// S_P6 - Wait
+	mem[1] :h= ( @p_p7_ds )	// P_P7 - Auto
+	mem[1] :h= ( @s_p2_ds )	// S_P2 - P<>V
+	mem[1] :h= ( @s_p0_ds )	// S_P0 - 50Hz
+	mem[1] :h= ( @ps_p3_ds )	// PS_P3 - Stor
+	mem[1] :h= ( @s_p3_ds )	// S_P3 - Erev
+	mem[1] :h= ( @ps_p2_ds ) }	// PS_P2 - Load
+
+// menu page titles
+@menu_pg_titles {	mem[9] :b= ( "    D-LEV" )	// data
+	mem[9] :b= ( "   LEVELS" )	// data
+	mem[9] :b= ( "  PREVIEW" )	// data
+	mem[9] :b= ( "     MIDI" )	// data
+	mem[9] :b= ( "   VOLUME" )	// data
+	mem[9] :b= ( "    PITCH" )	// data
+	mem[9] :b= ( "    NOISE" )	// data
+	mem[9] :b= ( "FLT_NOISE" )	// data
+	mem[9] :b= ( "    0_OSC" )	// data
+	mem[9] :b= ( "    1_OSC" )	// data
+	mem[9] :b= ( "  FLT_OSC" )	// data
+	mem[9] :b= ( "    RESON" )	// data
+	mem[9] :b= ( "   0_FORM" )	// data
+	mem[9] :b= ( "   1_FORM" )	// data
+	mem[9] :b= ( "   2_FORM" )	// data
+	mem[9] :b= ( "   3_FORM" )	// data
+	mem[9] :b= ( "  V_FIELD" )	// data
+	mem[9] :b= ( "  P_FIELD" )	// data
+	mem[9] :b= ( "  DISPLAY" )	// data
+	mem[9] :b= ( "   SYSTEM" ) }	// data
+	
