@@ -383,7 +383,10 @@ hive_sim.cpp
 #include <fstream>
 #include <string>
 #include <bitset>
+#include <vector>
+#include <map>
 #include <unordered_set>
+#include <unordered_map>
 
 #include <stdint.h>
 #ifdef MSWIN
@@ -398,6 +401,7 @@ using namespace std;
 #ifdef MSWIN
   #include "hive_console_mswin.cpp"
 #else
+  #include <iomanip>
   #include "hive_console_linux.cpp"
 #endif
 #include "hive_cmd.cpp"

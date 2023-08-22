@@ -2,6 +2,7 @@
 # This is unfinished but hopefully it's a good start.
 # I'm trying to do hacky workarounds in the makefile for things that are easy enough to just fix in the code.
 # Next time I look at this, that's what to do next.
+# also, this: https://code.visualstudio.com/docs/cpp/config-mingw
 
 SRC_DIR = hive-sim
 HAL_DIR = hive-asm
@@ -26,8 +27,8 @@ else
 	# need to figure out what toolchain eric was using
 	# is it just msvc compilers?
 
-	#DEFINES = -DMSWIN
-	#INCFLAGS = -I/ucrt64/include
+	DEFINES = -DMSWIN
+	LDFLAGS += -lwinmm -lws2_32
 endif
 
 CPPFLAGS = --std=gnu++11
