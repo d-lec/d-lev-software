@@ -377,8 +377,14 @@ hive_sim.cpp
 // comment this out for POSIX compile
 // #define MSWIN
 
-// c++ stuff
-#include <bits/stdc++.h>
+//replacements for contents of bits/stdc++.h
+#include <thread>
+#include <sstream>
+#include <fstream>
+#include <string>
+#include <bitset>
+#include <unordered_set>
+
 #include <stdint.h>
 #ifdef MSWIN
   #include <conio.h>
