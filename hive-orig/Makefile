@@ -14,7 +14,9 @@ BUILD_EXTS = *.ttl *.mif *.spi
 CC = g++
 
 MKDIR = mkdir
-LDFLAGS = 
+
+# Need this on windows otherwise the app will try to link to cygwin dylibs
+LDFLAGS = -static -static-libstdc++
 INCFLAGS = 
 EXE_SUFFIX =
 ifneq ($(OS), Windows_NT)
@@ -26,12 +28,14 @@ else
 	# we're looking for conio.h here but it doesn't quite work
 	# need to figure out what toolchain eric was using
 	# is it just msvc compilers?
+	#
+	# Update: it's cygwin.
 
 	DEFINES = -DMSWIN
 	LDFLAGS += -lwinmm -lws2_32
 endif
 
-CPPFLAGS = --std=gnu++11
+CPPFLAGS = -Wall --std=gnu++11
 MAINFILE = $(addprefix $(SRC_DIR)/, $(TARGET)).cpp
 SRCFILES = $(SRC_DIR)/*.cpp
 MAINBIN = $(addprefix $(BUILD_DIR)$(DIRSEP), $(TARGET))$(EXE_SUFFIX)
@@ -46,11 +50,11 @@ $(MAINBIN): $(MAINFILE) $(SRCFILES) $(BUILD_DIR)
 	@$(CC) $< $(CPPFLAGS) $(INCFLAGS) $(LDFLAGS) $(DEFINES) -o $@
 
 run: $(MAINBIN)
-	-cd $(HAL_DIR) && ..$(DIRSEP)$(MAINBIN)
+	@-cd $(HAL_DIR) && ..$(DIRSEP)$(MAINBIN)
 	# Move firmware builds out of hive-asm directory and into build/
-	-mv $(HAL_DIR)/*.spi $(BUILD_DIR)
-	-mv $(HAL_DIR)/*.mif $(BUILD_DIR)
-	-mv $(HAL_DIR)/*.ttl $(BUILD_DIR)
+	@-mv $(HAL_DIR)/*.spi $(BUILD_DIR)
+	@-mv $(HAL_DIR)/*.mif $(BUILD_DIR)
+	@-mv $(HAL_DIR)/*.ttl $(BUILD_DIR)
 
 clean:
 	@-rm -rf $(BUILD_DIR)

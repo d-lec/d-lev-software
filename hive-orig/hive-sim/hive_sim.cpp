@@ -387,8 +387,9 @@ hive_sim.cpp
 #include <map>
 #include <unordered_set>
 #include <unordered_map>
-
+#include <iomanip>
 #include <stdint.h>
+
 #ifdef MSWIN
   #include <conio.h>
   #include <windows.h>
@@ -399,9 +400,9 @@ using namespace std;
 // hive stuff
 #include "hive_pkg.cpp"
 #ifdef MSWIN
+  #include <iostream>
   #include "hive_console_mswin.cpp"
 #else
-  #include <iomanip>
   #include "hive_console_linux.cpp"
 #endif
 #include "hive_cmd.cpp"
