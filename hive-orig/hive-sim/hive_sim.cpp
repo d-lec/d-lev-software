@@ -373,9 +373,14 @@ hive_sim.cpp
 - Seems to work OK, caught some errors in the verification file.
 */
 
-
-// comment this out for POSIX compile
-// #define MSWIN
+// hacky way to reroute the working directories for files, using preprocessor macros
+// (see Makefile) - need to define DOCS_DIR, BIN_DIR, and ASM_DIR.
+// TODO: have the executable move to its current working directory on start
+// (have a platform independent way to do this, but it's ugly - 
+// or just parse command line options for file locations, which is probably the correct
+// solution anyways).
+#define STR(str) #str
+#define STRING(str) string(STR(str))
 
 //replacements for contents of bits/stdc++.h
 #include <thread>
@@ -409,16 +414,11 @@ using namespace std;
 #include "hive_core.cpp"
 #include "hive_view_file.cpp"
 
-
 //////////
 // MAIN //
 //////////
 
 int main(int argc, char* argv[]) {
-
-	// help file
-	string help_file = "sim_help.txt";
-
 	// default input file
 	string rd_file = "theremin.hal";
 //	string rd_file = "verify.hal";

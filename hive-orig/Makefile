@@ -1,8 +1,14 @@
 # Evan Kahn 8/21/2023
-# This is unfinished but hopefully it's a good start.
-# I'm trying to do hacky workarounds in the makefile for things that are easy enough to just fix in the code.
-# Next time I look at this, that's what to do next.
-# also, this: https://code.visualstudio.com/docs/cpp/config-mingw
+# Run make from within cygwin to build on windows - easy setup for conio.h.
+# todo: https://stackoverflow.com/questions/56457209/setting-up-vs-code-for-c-using-cygwin64-compiler-and-debugger-on-windows
+
+# relative paths to file handles passed into the executable at compile time
+# this should be replaced with something better in the future, but it helps
+# separate the build outputs from the source files for version control
+
+DEFINES += -DBIN_DIR=./
+DEFINES += -DDOCS_DIR=../docs/
+DEFINES += -DASM_DIR=../hive-asm/
 
 SRC_DIR = hive-sim
 HAL_DIR = hive-asm
@@ -15,32 +21,24 @@ CC = g++
 
 MKDIR = mkdir
 
-# Need this on windows otherwise the app will try to link to cygwin dylibs
-LDFLAGS = -static -static-libstdc++
+LDFLAGS = 
 INCFLAGS = 
 EXE_SUFFIX =
-ifneq ($(OS), Windows_NT)
-	DIRSEP = /
-else
-	DIRSEP = \\
+ifeq ($(OS), Windows_NT)
+	LDFLAGS = -static -static-libstdc++
 	EXE_SUFFIX = .exe
 	
-	# we're looking for conio.h here but it doesn't quite work
-	# need to figure out what toolchain eric was using
-	# is it just msvc compilers?
-	#
-	# Update: it's cygwin.
-
-	DEFINES = -DMSWIN
+	DEFINES += -DMSWIN
 	LDFLAGS += -lwinmm -lws2_32
 endif
 
 CPPFLAGS = -Wall --std=gnu++11
 MAINFILE = $(addprefix $(SRC_DIR)/, $(TARGET)).cpp
 SRCFILES = $(SRC_DIR)/*.cpp
-MAINBIN = $(addprefix $(BUILD_DIR)$(DIRSEP), $(TARGET))$(EXE_SUFFIX)
+BIN_NAME = $(TARGET)$(EXE_SUFFIX)
+MAINBIN = $(addprefix $(BUILD_DIR)/, $(BIN_NAME))
 
-all: run
+all: $(BUILD_DIR) $(MAINBIN)
 
 $(BUILD_DIR):
 	@-$(MKDIR) -p $(BUILD_DIR)
@@ -50,11 +48,7 @@ $(MAINBIN): $(MAINFILE) $(SRCFILES) $(BUILD_DIR)
 	@$(CC) $< $(CPPFLAGS) $(INCFLAGS) $(LDFLAGS) $(DEFINES) -o $@
 
 run: $(MAINBIN)
-	@-cd $(HAL_DIR) && ..$(DIRSEP)$(MAINBIN)
-	# Move firmware builds out of hive-asm directory and into build/
-	@-mv $(HAL_DIR)/*.spi $(BUILD_DIR)
-	@-mv $(HAL_DIR)/*.mif $(BUILD_DIR)
-	@-mv $(HAL_DIR)/*.ttl $(BUILD_DIR)
+	@cd $(BUILD_DIR) && ./$(BIN_NAME)
 
 clean:
 	@-rm -rf $(BUILD_DIR)

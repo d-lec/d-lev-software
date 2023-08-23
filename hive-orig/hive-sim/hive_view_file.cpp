@@ -7,7 +7,7 @@
 // return true if error
 bool file_to_sv(const string& fname_i, vector<string>& sv_o) {
 	ifstream rd_file;
-	rd_file.open(fname_i, ios::in | ios::binary);  // open file stream
+	rd_file.open(STRING(DOCS_DIR) + fname_i, ios::in | ios::binary);  // open file stream
 	if(!rd_file.is_open()) { return(true); }
 	// read file lines to sv & close file
 	vector<string> rd_sv;

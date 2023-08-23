@@ -1,5 +1,4 @@
-*.spi
-*.mif
-hive_sim
-hive_sim.exe
+.DS_Store
+hive-orig/build
+*.swp
 

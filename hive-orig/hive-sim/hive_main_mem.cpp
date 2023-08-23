@@ -1143,7 +1143,7 @@ public:
 	
 		// prime things
 		vstate.push_back( empty_state );
-		vstate.back().file = file_i;
+		vstate.back().file = STRING(ASM_DIR) + file_i;
 		set.insert(file_i);
 		rd_file.open(vstate.back().file.c_str(), ios::in | ios::binary);  // open file stream
 		if (!rd_file.is_open()) { error_f = true; error_msg_o += "Unable to open base file: " + vstate.back().file; }
@@ -1191,7 +1191,7 @@ public:
 						if (!dupe_f) {  // not a state dupe
 							vstate.back().pos = rd_file.tellg();  // save current position
 							vstate.push_back( empty_state );  // new state
-							vstate.back().file = vtoken[2];  // set new file name
+							vstate.back().file = STRING(ASM_DIR) + vtoken[2];  // set new file name
 							rd_file.close();  // close file stream
 							rd_file.open(vstate.back().file.c_str(), ios::in | ios::binary);  // open new file stream
 							if (!rd_file.is_open()) { error_f = true; error_msg_o += "Unable to open file: " + vstate.back().file; } 
@@ -2307,7 +2307,7 @@ public:
 		for(int32_t bank = 0; bank < BANKS; bank++) {
 	
 			// open file
-			mif_file.open(filename[bank].c_str());
+			mif_file.open(STRING(BIN_DIR) + filename[bank]);
 	
 			// check for open files
 			if (!mif_file.is_open()) { error_f = true; error_msg_o += "Unable to open file: " + filename[bank]; }
@@ -2464,7 +2464,7 @@ public:
 			ttl_file.close();
 		}
 		if (!error_f) { 
-		    string crcfilename = int_to_str(crc, "HEX", 32, false) + ".ttl";  // new file name based on crc
+		    string crcfilename = STRING(BIN_DIR) + int_to_str(crc, "HEX", 32, false) + ".ttl";  // new file name based on crc
 		    remove(crcfilename.c_str());  // kill it if it exists
 			error_f = rename(tempfilename.c_str(), crcfilename.c_str());  // rename
 			if (error_f) { error_msg_o += "Unable to rename TTL file"; }
@@ -2515,7 +2515,7 @@ public:
 			spi_file.close();
 		}
 		if (!error_f) { 
-		    string crcfilename = int_to_str(crc, "HEX", 32, false) + ".spi";  // new file name based on crc
+		    string crcfilename = STRING(BIN_DIR) + int_to_str(crc, "HEX", 32, false) + ".spi";  // new file name based on crc
 		    remove(crcfilename.c_str());  // kill it if it exists
 			error_f = rename(tempfilename.c_str(), crcfilename.c_str());  // rename
 			if (error_f) { error_msg_o += "Unable to rename SPI file"; }
