@@ -53,10 +53,11 @@
 	P0 *xu= s3
 	P0 +u= P3
 	s7 := pc := @exp2_uint_np	// <=> exp2_uint_np()
-	s1 := 0x55c2c6	// fall := 10Hz
 	s2 := 0x8937a	// rise := 1Hz
+	s1 := s2 *u 10	// fall := 10Hz
 	s6 := @lp1_ds	// lp1_ds addr
-	s7 := pc := @lp1_ubi	// <=> lp1_ubi()
+	s7 := pc := @hp1_ubi	// <=> hp1_ubi()
+	P0 := mem[@lp1_ds]	// get lp
 	pc := P7	// RETURN =>
 @lp1_ds	mem[1] := ( 0 ) }	// ** LP1_DS **  ** SUB END **
 

@@ -55,23 +55,28 @@
 @sto	mem[@pink] := s0	// sto pink
 	mem[@sh_bits] :h= s5 	// sto sh bits
 @n_eq_o	P5, P2, P1	// clean
-	P0 <<<= 27	// full scale
+	P0 <<<= 27	// full scale (+/-15 * 2^27)
 	pc := P7	// RETURN =>
 @pink	mem[1] := ( 0 )	// noise
 @sh_bits	mem[1] :h= ( 0x555 )	// sample & hold bits
 @tree_cnt	mem[1] :h= ( 1 ) }	// tree counter   ** SUB END **
 
 
-// NOISE_PULSE(2:duty, 4:puls, 7:rtn | 1:out) 
+// NOISE_PULSE(2:duty, 3:puls, 4:xmix, 7:rtn | 1:out) 
 // control of noise pulsing (linear)
-// 9 cycles
-@noise_pulse {	s1 := mem[@o_osc0_ds+8]	// get osc0 pm  ** NOISE_PULSE() START **  
-	P1 := nsb(s1)	// sgn => uns
+// 15 +9 = 24 cycles
+@noise_pulse {	s0 := mem[@o_osc0_ds+8]	// get osc0 pm  ** NOISE_PULSE() START **  
+	s5 := mem[@o_osc1_ds+8]	// get osc1 pm
+	s6 := mem[@o_osc2_ds+8]	// get osc2 pm
+	P5 >>>= 1	// pm1/2
+	P6 >>>= 1	// pm2/2
+	P5 += P6	// pm1/2 + pm2/2
+	s7 := pc := @osc_xmix	// <=> osc_xmix()
+	s1 := nsb(P0)	// sgn => uns (mov)
 	P1 := ~s1	// ~pm
 	P1 -u= P2	// ~pm - duty
 	P1 := lim(s1)	// lim
-	P1 *xu= P4	// lim * puls
+	P1 *xu= P3	// lim * puls
 	P1 *u= 16	// * 16
 	P1 := lim(s1)	// lim
 	pc := P7 }	// RETURN =>  ** SUB END **
-

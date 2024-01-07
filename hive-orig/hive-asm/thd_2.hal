@@ -47,19 +47,19 @@
 ///////////////////
 @fz	s0 := mem[@p_exp_ds]	// get exponential pitch
 // P4 (mode)
-	s4 := mem[@pp_p4_ds]	// get mode[0:11]
+	s4 := mem[@pp_p4_ds]	// get mode[0:12]
 	s5 := 4
-	(s4 <u P5) ? pc := @prvw_lt4	// (mode < 4) ?
+	(s4 <u P5) ? pc := @m_lt4	// (mode < 4) ?
 	P0 := mem[@p_raw_ds]	// get raw pitch (lin)
 	s5 := 8
-	(s4 <u P5) ? pc := @prvw_lt8	// (mode < 8) ?
+	(s4 <u P5) ? pc := @m_lt8	// (mode < 8) ?
 	s7 := pc := @pitch_quant	// <=> pitch_quant()
 // P_P5 (cent)
-@prvw_lt8	s1 := mem[@p_p5_ds]	// get cent[-127:127]
+@m_lt8	s1 := mem[@p_p5_ds]	// get cent[-127:127]
 	s7 := pc := @pitch_cent	// <=> pitch_cent()
 	s7 := pc := @exp2_uint_lq	// <=> exp2_uint_lq()
 // P2 (oct), O_P2 (oct)
-@prvw_lt4	s1 := mem[@pp_p2_ds]	// get oct[-7:7]
+@m_lt4	s1 := mem[@pp_p2_ds]	// get oct[-7:7]
 	s2 := mem[@o_p5_ds]	// get oct[-7:7]
 	P1 += P2	// combine
 	s7 := pc := @inc_oct	// <=> inc_oct()
@@ -67,23 +67,28 @@
 	s2 := mem[@pp_p1_ds]	// get harm[-31:31](fs)
 	s6 := @pp_osc_ds	// get addr
 	s7 := pc := @osc_pp	// <=> osc_pp()
+	s5 := 12
+	(s4 <u P5) ? pc := @m_lt12	// (mode < 12) ?
+	P0 := 1 << 30	// osc := 1/4 (dc)
 // P6 (vmod), P3 (pmod)
-	s3 := mem[@pp_p6_ds]	// get vmod[-63:63](fs_sq)
+@m_lt12	s3 := mem[@pp_p6_ds]	// get vmod[-63:63](fs_sq)
 	s3 := mem[@pp_p3_ds]	// get pmod[-63:63](fs_sq)
 	s7 := pc := @pp_levl_mod	// <=> pp_levl_mod()
 // P0 (prev)
-	P4 := mem[@pp_p0_ds]	// get prev[0:63](48db_dn) (pop mode)
-	P0 *xsu= P4	// osc_pp * prev
+	s3 := mem[@pp_p0_ds]	// get prev[0:63](48db_dn)
+	P0 *xsu= P3	// osc_pp * prev
 // P5 (tone)
 	s2 := mem[@pp_p5_ds]	// get tone[-31:31](fs)
-	s2 := s2	// copy
 // treble
 	s6 := @pp_treb_ds	// addr
 	s7 := pc := @eq_treb	// <=> eq_treb()
-// bass
+// bass	
+	s5 := 12
+	(P4 !<u P5) ? pc := @m_nlt12	// (mode !< 12) ? skip bass
+	s2 := mem[@pp_p5_ds]	// get tone[-31:31](fs)
 	s6 := @pp_bass_ds	// addr
 	s7 := pc := @eq_bass	// <=> eq_bass()
-	mem[@pp_out_ds] := P0 	// sto preview
+@m_nlt12	mem[@pp_out_ds] := P0 	// sto preview
 ////////////
 // PV MOD //
 ////////////

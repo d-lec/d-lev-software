@@ -6,6 +6,8 @@
 //////////////////
 
 = GLOBAL ISSUES =
+- Make OFL and SAT conditional jumps?
+- Be able to read OFL and SAT flags?
 - Make HAL +,++,-,--,* defaults UNSIGNED, fix code if necessary.
 - Fix HAL to take 16 bit unsigned immediates.
 - Fix sim large stepping breakage.
@@ -13,13 +15,130 @@
 ////////////////
 // CHANGE LOG //
 ////////////////
-2023-06-20 : 0x7bbb846b
+2023-12-07 : 0x94e67227 - RELEASED : 2024-01-08 : v12
+- NOISE:nois[0] now routes osc output to noise EQ & SVF input.
+
+2023-11-25 : 0x9202ee10
+- Fixed bug in midi_act() which also eliminated overlap stuttering.
+- Removed MIDI note-on hysteresis (seems it's no longer needed?).
+
+2023-11-24 : 0x42dc75fc
+- VOLUME:damp[1:63] don't allow MIDI note_on below dloc threshold (h/t Vincent).
+- BUG: current logic for the above isn't airtight (h/t Vincent).
+
+2023-11-23 : 0xefb796a4
+- VOLUME:damp[1:63] sets MIDI note_off @ VOLUME:dloc (h/t Vincent).
+- VOLUME:velo type 0xd1 => 0x30 (removed rectify option).
+- Scaled up MIDI:velo 2x.
+
+2023-10-31 : 0xcabfa8fe - RELEASED : 2023-11-02 : v11
+- Moved volume velocity sense to before vol_drop(), fixed glitch @ -48dB.
+- Volume processing: vol_hpf() => vol_drop() => vol_vel() => vol_knee().
+- Converted lp1_ubi() to hp1_ubi(), using it for vol_hpf() & pc_cntr_mod().
+- Removed lp1().
+
+2023-10-30 : 0x25f51b12
+- Velocity HPF is now bi-modal (20Hz & 80Hz).
+- Removed |v_hpf| from midi_vel() (not needed).
+
+2023-10-18 : 0x88d4c81
+- FLT_OSC:xmix type 0x24 => 0xcd ([-31:31](tfs)).
+- FLT_NOISE:xmix type 0x24 => 0xcd.
+- svf_xmix() => filt_xmix(); reson uses this now too.
+- Multi-mode filter xmix relocated to filter input.
+- Above allow more phase mix flexibility, particularly with 2nd order hp.
+
+2023-10-12 : 0xd4de283c
+- PREVIEW:mode type 0x0b => 0x0c ([0:11] => [0:12]).
+- New PREVIEW:mode[12] => +1/4 DC stimulus for bells and such.
+- PREVIEW:mode[12] => tone is +/- treble only.
+- Velocity lower limit -96dB => -48dB (mitigate triggering from Drop edge).
+
+2023-10-02 : 0xf1c279cc - RELEASED : 2023-10-09 : v10
+- 0_OSC:harm < 0 => osc 1&2 harm := 0 (h/t Vincent).
+- 0_OSC:harm type 0x24 => 0xcd (new type abs_tfs).
+- 1_OSC:xmix type 0xc1 => 0xcd, simplified osc_xmix().
+- RESON:xmix type 0xc5 => 0xcd, removed reson_xmix() (now just 3 lines).
+- Removed noise pulse PM gainup below (unnecessary due to type change).
+
+2023-09-29 : 0xa3630c61
+- Gained up noise pulse PM 1/32 to fix some presets (e.g. horse).
+
+2023-09-28 : 0xe88c8d50
+- Fixed ring mod A4 (was A5).
+
+2023-09-27 : 0x9135ec03
+- 1_OSC:xmix type 0xf2 => 0xc1 (removed type 0xf2).
+- All Ofs +/- types 0x26 => 0x27 ([0:127] => [0:255], increased res.)
+- TODO : librarian presets updating. 
+- TODO : librarian profiles updating. 
+- TODO : ring mod info in manual and quick reference. 
+
+2023-09-21 : 0x5cae99d5
+- 1_OSC:xmix < 0: osc_1 & osc_2 => A440.
+- 1_OSC:xmix type 0xc5 => 0xf2 (new type).
+- Fixed stuff below, 0xf1 type bug.
+
+2023-09-20 : 0x96c5c2cd
+- 1_OSC:xmix type 0x24 => 0xc5, (xmix < 0) ring mod xmix.
+- FIXME : noise_pulse() uses osc_xmix()!
+- FIXME : bleed w/ 1_OSC:xmix[-31].
+
+2023-09-19 : 0x80b55fde
+- VOLUME:velo type 0x30 => 0xd1, (velo < 0) rectifies velocity.
+
+2023-09-18 : 0xf511c8c2
+- vol_vel() input now restricted to [-96:0] dB, which also prevents hpf_u() sat.
+
+2023-09-16 : 0x5fa21dbd
+- vol_vel() now in series before, rather than of parallel to, vol_knee().
+- Removed anti-wind-up (was glitching a bit).
+
+2023-09-12 : 0xf686d48f
+- New anti-wind-up vol_vel() lp1 construct increases w if limiting.
+- Volume velo sense & processing now post Drop, +/- velocity.
+
+2023-09-07 : 0x69d0d332
+- Using hp1_ubi() instead of bpf output of hp2() for velocity.
+- VOLUME:velo back to 48db_dn, pos velocity only.
+ 
+2023-09-03 : 0x9d732252
+- Scaled velocity 1/2.
+- Should velocity be linear?  It needs limiting!
+
+2023-09-02 : 0x68e67d9e
+- (VOLUME:velo < 0) now gives +/- velocity.
+- Velocity now seems to work just fine w/o log2 or kloc gain down?
+- New types [0xd0:0xd3]s48db_dn expand on type 0xf2 (removed).
+- All formant levels type 0xf2 => 0xd2.
+- VOLUME:velo type 0x30 => 0xd1.
+
+2023-08-28 : 0x51046150 (semi-released to FB)
+- Drop knob now xmix of linear and ~(~vol^2 * 16).
+- (where * 16 makes it pivot at -12dB).
+
+2023-08-22 : 0x36bd2fc4
+- Lift knob source now post Sens, ^2 scaled.
+
+2023-08-21 : 0x13c72585
+- Drop knob sorce now post Ofs+ (fixed shelving w/ Ofs+ > 70).
+
+2023-07-19 : 0x6be9394f - RELEASED : 2023-07-26 : v9
+- Problem: unpowered dongle sends low / BREAK (h/t Craig L. & Evan K.):
+- hcl(): RX UART now discards NULL (BREAK) & extended ASCII chars.
+- hcl(): removed RX UART loop of 2023-06-20 (0x7bbb846b) for safety.
+
+2023-07-17 : 0x58b63afc
+- Noise PWM source now all 3 oscillators, blended via 1_OSC:xmix.
+- Oscillator code factoring, thread 3 real-time cushion minimal.
+
+2023-06-20 : 0x7bbb846b - RELEASED : 2023-06-23 : v8
 - A bit more robust against upload knob changes.
 
 2023-06-15 : 0xd0fafad2
 - Rearranged PITCH UI knobs.
 
-2023-05-11 : 0x73c6c3d7
+2023-05-11 : 0x73c6c3d7 - RELEASED : 2023-05-24 : v7
 - For better preset backward compatibility:
 - mode: pp_p6 => pp_p4.
 - vmod: pp_p4 => pp_p6.
@@ -67,7 +186,7 @@
 2023-02-27 : 0x3173ef75
 - Resonator HPF damping: 1=>1.5
 
-2023-01-27 : 0x27c263bf - RELEASED : 2023-01-31
+2023-01-27 : 0x27c263bf - RELEASED : 2023-01-31 : v6
 - Previous load had bad PP pvmod bug.
 - PP & 4th osc modes now largely independent code blocks.
 - PP pmod gain-up of xmix point limited to 48dB.
@@ -117,7 +236,7 @@
 - PP level now a max, not part of mod (type 0x74 => 0x31).
 - Type 0x74 removed.
 
-2023-01-01 : 0x2d58f653 - RELEASED : 2023-01-01
+2023-01-01 : 0x2d58f653 - RELEASED : 2023-01-01 : v5
 - RESON:mode back to 2020-05-30:
 -  2 : parallel stereo
 -  1 : parallel mono
@@ -153,14 +272,14 @@
 - Type reorder: [0x34:0x37] => [0x30:0x33] (48db_dn).
 - Type reorder: 0xf2 => 0xfc (midi cc).
 
-2022-07-21 : 0xadd46826
+2022-07-21 : 0xadd46826 - RELEASED : 2022-10-06 : v2
 - PITCH:vmod 2x strength.
 
 2022-07-18 : 0x68e1649a
 - PITCH:vloc[0:63](fs) => vmod[-31:31](fs_sq), w/ logic changes.
 - PITCH:levl => corr (just renamed).
 
-2022-07-03 : 0x7bc1bd55
+2022-07-03 : 0x7bc1bd55 - RELEASED : 2022-07-05
 - MIDI:oct now combined with D-LEV:bank rather than 0_OSC:oct.
 
 2022-07-02 : 0x
@@ -223,7 +342,7 @@
 - Implemented "rk" and "wk" HCL commands to read/write knob values.
 - Needs work to load presets.
 
-2022-05-10 : 0x93152c8b
+2022-05-10 : 0x93152c8b - RELEASED : 2022-05-10
 - Moved thd_2 init code post display PWM to fix LCD flickering @ preset load.
 
 2022-05-06 : 0xb11cf0fd

@@ -14,8 +14,12 @@
 // COMMON //	
 ////////////
 @fz	s0 := mem[@p_exp_ds]	// exp0 : get exp pitch
-	s0 := s0	// exp1
-	s0 := s0	// exp2
+	s0 := s0	// exp1 := exp0
+// P7+4 (xmix_enc)
+	s4 :bs= mem[@o_p7_ds+4]	// get xmix_enc[-31:31]
+	(P4 !< 0) ? pc := @xmix_nn	// (xmix_enc !< 0) ?
+	P0 := 1 << 28	// exp1 := A440
+@xmix_nn	s0 := s0	// exp2 := exp1
 // pm (fm) interconnect
 	s1 := mem[@o_osc1_ds+12]	// pm1
 	P1 >>>= 1	// pm1/2
@@ -23,9 +27,9 @@
 	P2 >>>= 1	// pm2/2
 	P1 += P2	// pm0 = pm1/2 + pm2/2
 	s1 := mem[@o_osc0_ds+12]	// pm1 := pm0
-	s1 := mem[@o_osc0_ds+12]	// pm2 := pm0
+	s1 := s1	// pm2 := pm0
 // P2 (harm), P4 (vmod), P3 (pmod)
-	s2 := mem[@o_p2_ds]	// get harm[0:31](fs)
+	s2 := mem[@o_p2_ds]	// get harm[-31:31](abs_tfs)
 	s3 := mem[@o_p4_ds]	// get vmod[-63:63](fs)
 	s3 := mem[@o_p3_ds]	// get pmod[-63:63](fs)
 	s7 := pc := @osc_harm_mod	// <=> osc_harm_mod()
@@ -34,11 +38,15 @@
 	s4 := mem[@o_p8_ds]	// get fm[0:31]
 	s7 := pc := @osc_harm_odd	// <=> osc_harm_odd()
 	s2 := s2	// harm1
-	s2 := s2	// harm2
+// P2+4 (harm_enc)
+	s2 :bs= mem[@o_p2_ds+4]	// get harm_enc[-31:31]
+	(P2 !< 0) ? pc := @harm_nn	// (harm_enc !< 0) ?
+	P2 := 0	// harm1 := 0
+@harm_nn	s2 := s2	// harm2 := harm1
 	s3 := s3	// odd1
-	s3 := s3	// odd2
+	s3 := s3	// odd2 := odd1
 	s4 := s4	// fm1
-	s4 := s4	// fm2
+	s4 := s4	// fm2 := fm1
 //////////
 // OSC2 //
 //////////
@@ -80,8 +88,13 @@
 	s7 := pc := @inc_oct	// <=> inc_oct()
 	s6 := @o_osc0_ds	// ds addr
 	s7 := pc := @osc_pm1	// <=> osc_pm1()
+// P7+4 (xmix_enc)
+	s4 :bs= mem[@o_p7_ds+4]	// get xmix_enc[-31:31]
+	(P4 !< 0) ? pc := @xm_nn	// (xmix_enc !< 0) ?
+	P5 *xs= s0	// ringmod
+	P5 <<= 1	// ringmod*2 (fs)
 // P7 (xmix)
-	s4 := mem[@o_p7_ds]	// get xmix[0:31](fs)
+@xm_nn	s4 := mem[@o_p7_ds]	// get xmix[-31:31](abs_tfs)
 	s7 := pc := @osc_xmix	// <=> osc_xmix()
 /////////	
 // vol //
@@ -109,8 +122,8 @@
 ////////////////
 // KEEP THESE SEQUENTIAL!
 @o_osc0_ds {	mem[4] := ( 0 ) }	// ** O_OSC0_DS **
-@o_osc1_ds {	mem[4] := ( 0 ) }	// ** O_OSC1_DS **
-@o_osc2_ds {	mem[4] := ( 0 ) }	// ** O_OSC2_DS **
+@o_osc1_ds {	mem[5] := ( 0 ) }	// ** O_OSC1_DS **
+@o_osc2_ds {	mem[5] := ( 0 ) }	// ** O_OSC2_DS **
 @o_bass_ds {	mem[2] := ( 0 ) }	// ** O_BASS_DS **
 @o_treb_ds {	mem[2] := ( 0 ) }	// ** O_TREB_DS **
 @o_out_ds {	mem[1] := ( 0 ) }	// ** O_OUT_DS **

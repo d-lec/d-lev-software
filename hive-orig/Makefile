@@ -32,7 +32,7 @@ ifeq ($(OS), Windows_NT)
 	LDFLAGS += -lwinmm -lws2_32
 endif
 
-CPPFLAGS = -Wall --std=gnu++11
+CPPFLAGS = --std=gnu++11
 MAINFILE = $(addprefix $(SRC_DIR)/, $(TARGET)).cpp
 SRCFILES = $(SRC_DIR)/*.cpp
 BIN_NAME = $(TARGET)$(EXE_SUFFIX)

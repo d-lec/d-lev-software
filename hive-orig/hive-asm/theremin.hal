@@ -47,7 +47,7 @@
 
 
 // start of code
-`@code_start	s7 := pc := `@boot_loader	// <=> boot_loader()
+`@code_start	s7 := pc := `@boot_loader	// <=> boot_loader()  ** CODE START **  
 	pc := @thd_7	// => thd_7()
 
 

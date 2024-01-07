@@ -13,7 +13,7 @@
 	s6 := @v_hum_filt_ds	// v_hum_filt_ds addr
 	s7 := pc := @hum_filt	// <=> hum_filt()
 	mem[@v_flt_ds] := s0	// sto v_flt (for ACAL)
-//  P0 (Vcal)
+// P0 (Vcal)
 	s5 := mem[@v_p0_ds]	// get Vcal[-127:127](fs_sq)
 	P5 >>>= 6	// scale Vcal
 	s4 := mem[@v_nul_ds]	// get v_nul
@@ -21,7 +21,7 @@
 	P4 := lim(s4)	// lim(v_nul + Vcal)
 	P4 -u= P0	// lim(v_nul + Vcal) - v_flt
 	s0 := lim(P4)	// lim(lim(v_nul + Vcal) - v_flt)
-@nz	s7 := pc := @ufrac_to_f	// <=> ufrac_to_f()
+	s7 := pc := @ufrac_to_f	// <=> ufrac_to_f()
 // P1 (Lin)
 	s4 := mem[@v_p1_ds]	// get Lin[-15:15]
 	P4 +s= 32	// offset
@@ -32,49 +32,47 @@
 // P2 (Ofs-)
 	s4 := mem[@v_p2_ds]	// get Ofs-[0:127](fs)
 	s7 := pc := @ufrac_to_f_hi	// <=> ufrac_to_f_hi()
-	P5 +s= 4	// exp + 4 (U4.3)
-	P6 *s= -1 	// -sgn  
-	s7 := pc := @add_f	// <=> add_f()
+	P5 +s= 4	// 16 * Ofs-
+	P6 *s= -1 	// -(16 * Ofs-)  
+	s7 := pc := @add_f	// <=> add_f() (pow * -(16 * Ofs-))
 // P3 (Sens)
 	s4 := mem[@v_p3_ds]	// get Sens[-127:127](fs_sq)
 	s7 := pc := @frac_to_f_hi	// <=> frac_to_f_hi()
-	s0 := s0	// mag (cpy, drp := mag)
-	s1 := s1	// exp (cpy)
-	s2 *s= s6	// sgn * sgn (cpy)
-	s7 := pc := @f_to_ufrac	// <=> f_to_ufrac() (drp)
-// P4 (Drop)
-	s3 := mem[@v_p4_ds]	// get Drop[0:31](fs)
-	P3 *xu= P0	// Drop * drp
-	P3 *xu= s3	// (Drop * drp)^2
-	P2 *s= -1	// -in
-	s7 := pc := @mul_f	// <=> mul_f() (Sens * -in)
+	P6 *s= -1 	// -Sens
+	s7 := pc := @mul_f	// <=> mul_f() (in * -Sens)
 // P5 (Ofs+)
-@vrev_nz	s4 := mem[@v_p5_ds]	// get Ofs+[0:127](fs)
+	s4 := mem[@v_p5_ds]	// get Ofs+[0:127](fs)
 	s7 := pc := @ufrac_to_f_hi	// <=> ufrac_to_f_hi()
 	P5 +s= 1	// exp + 1 (U1.6)
 	s7 := pc := @add_f	// <=> add_f()
 	s7 := pc := @f_to_ufrac	// <=> f_to_ufrac()
-// velocity filter
-	s7 := pc := @vol_bpf	// <=> vol_bpf()
-	s0 := s0	// cpy
-// P6 (dloc),  P5 (damp)
+// velocity sense
+	s7 := pc := @vol_hpf	// <=> vol_hpf()
+// E_P6 (dloc),  E_P5 (damp)
 	s1 := mem[@e_p6_ds]	// get dloc[0:63](fs)
 	s2 := mem[@e_p5_ds]	// get damp[0:63]
 	s7 := pc := @vol_damp	// <=> vol_damp()
-	P0 -u= P3	// v - (Drop * drp)^2
-	P0 := lim(s0)	// lim
+// P4 (Drop)
+	s4 := mem[@v_p4_ds]	// get Drop[0:31](fs)
+	s7 := pc := @vol_drop	// <=> vol_drop()
 	mem[@v_raw_ds] := s0	// sto v_raw (retain for below)
-////////////////////////
-// Envelope generator //
-////////////////////////
-// P0 (kloc), P1 (knee), P4 (velo)
+/////////////////////
+// Velocity & knee //
+/////////////////////
+// P4 (velo)
+	s5 := mem[@e_p4_ds]	// get velo[-31:31](48db_dn)
+	s7 := pc := @vol_vel	// <=> vol_vel()
+// P0 (kloc), P1 (knee)
 	s1 := mem[@e_p0_ds]	// get kloc[0:63](fs)
 	s4 := mem[@e_p1_ds]	// get knee[0:31](inv_rev)
-	s5 := mem[@e_p4_ds]	// get velo[0:31](48dB)
-	s7 := pc := @vol_vel_knee	// <=> vol_vel_knee()
+	s7 := pc := @vol_knee	// <=> vol_knee()
 	mem[@v_pre_ds] := s0	// sto v_pre
+/////////////////////
+// Envelope & cvol //
+/////////////////////
 // P2 (fall)
 	s1 := mem[@e_p2_ds]	// get fall[0:63](84db_rev_dn_n)
+	s2 := mem[@v_damp_ds]	// get v_damp
 	P1 *xu= P2	// fall * v_damp
 	P1 := ~s1	// ~(fall * v_damp)
 	P1 >>= 7	// scale fall (1.3ms per 98dB min)

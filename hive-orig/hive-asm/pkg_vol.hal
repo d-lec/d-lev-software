@@ -1,52 +1,60 @@
-	
-// XMIX(0:in_0, 1:in_1, 4:xmix, 7:rtn | 0:out) 
-// crossfades 2 signed inputs together
-// can't ofl/ufl
-// xmix is unsigned
-// 5 cycles max
-@xmix {	P1 *xsu= s4	// in_1 * xmix  ** XMIX() START **
-	P4 := ~s4	// ~xmix
-	P0 *xsu= P4	// in_0 * ~xmix
-	P0 += P1	// add
-	pc := P7 }	// RETURN =>  ** SUB END **
-
-	
-// VOL_BPF(0:v_in, 7:rtn | 0:v_in) 
-// bp filter vol @10Hz
-@vol_bpf {	s0 := nsb(s0)	// uns => sgn (cpy)  ** VOL_BPF **
-	s1 := 0x55c2c6	// w := 10Hz
-	s6 := @hp2_ds	// hp2_ds addr
-	s7 := pc := @hp2	// <=> hp2()
-	P0 := mem[P6]	// get lp
-	mem[@v_bpf_ds] := P0	// sto v_bpf
-	pc := P7	// RETURN =>
-@hp2_ds {	mem[2] := ( 0 ) } }	// ** V_HP2_DS **  ** SUB END **
-@v_bpf_ds {	mem[1] := ( 0 ) }	// ** V_BPF_DS **
-
-	
-// VOL_VEL(0:v_bpf, 1:kloc, 5:velo, 7:rtn | 5:v_out) 
-// positive velocity envelope with location and velocity inputs gain-down
+// VOL_HPF(0:v_in, 7:rtn | 0:v_in) 
+// velocity hpf
 // unsigned I/O
-@vol_vel {	(s0 !< 0) ? pc := @nlz	// (v_bpf !< 0)  ** VOL_VEL **
-	P0 := 0	// lim(v_bpf)
-@nlz	P0 *xu= P5	// v_bpf * velo
-	s7 := pc := @log2_uint_np	// <=> log2_uint_np()
-	P0 -u= P1	// log2 - kloc
-	s5 := lim(P0)	// v_out := lim(log2 - kloc)
+// range limited to [-48:0] dB
+@vol_hpf {	s1 := 0xc0000000	// 3/4 fs (-48dB) ** VOL_HPF() START **
+	s0 -u= P1	// v_in - 3/4 (cpy)
+	P0 := lim(s0)	// lim
+	s2 := 0xab92a6	// rise := 20Hz
+	s1 := s2 *u 4	// fall := 80Hz
+	s6 := @lp	// lp addr
+	s7 := pc := @hp1_ubi	// <=> hp1_ubi()
+	mem[@v_hpf_ds] := P0	// sto hp
+	pc := P7	// RETURN =>
+@lp	mem[1] := ( 0 ) }	// lp   ** SUB END **
+@v_hpf_ds {	mem[1] := ( 0 ) }	// ** V_HPF_DS **
+
+
+// VOL_DROP(0:v_in, 4:Drop, 7:rtn | 0:v_out) 
+// crossfades linear and flipped squared responses
+// pivots about -12dB (192dB/16 = 12dB, hence the *16)
+@vol_drop {	s1 := ~s0	// ~v_in  ** V_DROP() START **
+	P1 *xu= s1	// ~v_in^2
+	P1 *u= 16	// ~v_in^2 * 16
+	P1 := lim(s1)	// lim
+	P1 := ~s1	// ~(~v_in^2 * 16)
+	P1 *xu= s4	// Drop * ~(~v_in^2 * 16)
+	P4 := ~s4	// ~Drop
+	P0 *xu= P4	// v_in * ~Drop
+	P0 +u= P1	// (v_in * ~Drop) + (Drop * ~(~v_in^2 * 16))
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 
-// VOL_KNEE(0:v_in, 1:kloc, 4:knee, 7:rtn | 4:v_out) 
+// VOL_VEL(0:v_in, 5:velo, 7:rtn | 0:v_vel) 
+// volume velocity
+// unsigned I/O
+@vol_vel {
+	s3 := mem[@v_hpf_ds]	// get hp
+	P5 >>= 23	// velo >> 23
+	P3 *su= P5	// hp * (velo >> 23)
+	P3 := sat(s3)	// sat
+	P0 +us= P3	// in + hp * (velo >> 23)
+	P0 := lim(s0)	// lim
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+	
+// VOL_KNEE(0:v_in, 1:kloc, 4:knee, 7:rtn | 0:v_out) 
 // envelope knee with variable threshold and slope
 // applies downward slope to envelope below the threshold
 // (v_in < kloc) ? v_out := kloc - (knee * (kloc - v_in))
 // else v_out := v_in
 // knee dynamic range expansion via -3/4 (~5 bits => ~7 bits)
 // unsigned I/O
-// 15/3 cycles max/min
-@vol_knee {	(s0 <u s1) ? pc := @lt_kloc	// (v_in < kloc) ? ** VOL_KNEE() START **
-	P4 := P0	// out := in
-	pc := P7, P1	// => RETURN
+@vol_knee {	P1 |= 0x3	// kloc | 0x3  ** VOL_KNEE() START **
+	P1 >>r= 2	// kloc[0:1) => kloc[3/4:1) (-48dB to 0dB)
+	(s0 <u s1) ? pc := @lt_kloc	// (v_in < kloc) ?
+	P4 P1	// clean
+	pc := P7	// => RETURN
 @lt_kloc	s1 -u= P0	// kloc - v_in (cpy)
 	P1 := lim(s1)	// lim
 	s6 := 0xc000	// 3/4 (16.16 format, expand dynamic range)
@@ -59,32 +67,18 @@
 	P5 +u= P1	// tot := int + frac
 	P5 := lim(s5)	// lim
 	P1 -u= P5	// kloc - tot
-	s4 := lim(P1)	// v_out := lim(kloc - tot)
+	s0 := lim(P1)	// v_out := lim(kloc - tot) (mov)
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 
-// VOL_VEL_KNEE(0:v_in, 1:kloc, 4:knee, 5:velo, 7:rtn | 0:v_out) 
-// linear volume velocity & curve & knee
-// unsigned I/O
-@vol_vel_knee {	s0 := mem[@v_bpf_ds]	// get v_bpf  ** VOL_VEL_KNEE() START **
-	s1 >>= 2	// kloc >> 2  (cpy)
-	P5 >>= 13	// velo >> 13
-	s7 := pc := @vol_vel	// <=> vol_vel()
-	P1 |= 0x3	// kloc | 0x3
-	P1 >>r= 2	// kloc[0:1) => kloc[3/4:1) (-48dB to 0dB)
-	s7 := pc := @vol_knee	// <=> vol_knee()
-	P4 +u= P5	// vol_knee() + vol_vel()
-	s0 := lim(P4)	// lim (mov)
-	pc := P7 }	// RETURN =>  ** SUB END **
-
-
-// VOL_DAMP(0:v_in, 1:dloc, 2:damp, 7:rtn | 2:v_damp) 
+// VOL_DAMP(0:v_in, 1:dloc, 2:damp, 7:rtn | 0:v_in) 
 // volume switch of global damping
 // unsigned I/O
-@vol_damp {	s7 := pc := @xk_mod	// <=> xk_mod() ** VOL_DAMP() START **
-	(P0 == 0) ? pc := @damp	// (xk_mod != 0) ?
+@vol_damp {	s0 := s0	// cpy  ** VOL_DAMP() START **
+	s7 := pc := @xk_mod	// <=> xk_mod()
+	(P0 == 0) ? pc := @damp	// (xk_mod == 0) ?
 	P2 := -1	// damp disable
-@damp	mem[@v_damp_ds] := s2	// sto v_damp
+@damp	mem[@v_damp_ds] := P2	// sto v_damp
 	pc := P7 }	// RETURN =>  ** SUB END **
 @v_damp_ds {	mem[1] := ( 0 ) }	// ** V_DAMP_DS **
 

@@ -373,28 +373,13 @@ hive_sim.cpp
 - Seems to work OK, caught some errors in the verification file.
 */
 
-// hacky way to reroute the working directories for files, using preprocessor macros
-// (see Makefile) - need to define DOCS_DIR, BIN_DIR, and ASM_DIR.
-// TODO: have the executable move to its current working directory on start
-// (have a platform independent way to do this, but it's ugly - 
-// or just parse command line options for file locations, which is probably the correct
-// solution anyways).
-#define STR(str) #str
-#define STRING(str) string(STR(str))
 
-//replacements for contents of bits/stdc++.h
-#include <thread>
-#include <sstream>
-#include <fstream>
-#include <string>
-#include <bitset>
-#include <vector>
-#include <map>
-#include <unordered_set>
-#include <unordered_map>
-#include <iomanip>
+// comment this out for POSIX compile
+// #define MSWIN
+
+// c++ stuff
+#include <bits/stdc++.h>
 #include <stdint.h>
-
 #ifdef MSWIN
   #include <conio.h>
   #include <windows.h>
@@ -405,7 +390,6 @@ using namespace std;
 // hive stuff
 #include "hive_pkg.cpp"
 #ifdef MSWIN
-  #include <iostream>
   #include "hive_console_mswin.cpp"
 #else
   #include "hive_console_linux.cpp"
@@ -414,11 +398,16 @@ using namespace std;
 #include "hive_core.cpp"
 #include "hive_view_file.cpp"
 
+
 //////////
 // MAIN //
 //////////
 
 int main(int argc, char* argv[]) {
+
+	// help file
+	string help_file = "sim_help.txt";
+
 	// default input file
 	string rd_file = "theremin.hal";
 //	string rd_file = "verify.hal";

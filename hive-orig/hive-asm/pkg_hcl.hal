@@ -429,9 +429,19 @@ STK
 
 // HCL(7:rtn | -)
 // get ch via RX UART, echo ch to TX UART, push ch to ch store, tokenize, parse
+// reg[31] = EMPTY
+// framing errors are NOT reported in RX register, so:
+// if (ch < 0) ch is EMPTY, discard 
+// if (ch == 0) ch is NULL or BREAK, discard
+// if (ch[7] == 1) ch is EXTENDED ASCII, discard
+// loop at end to check again can cause knob neglect / freeze,
+// better to let UART buffer overflow
 @hcl {	s0 := reg[`reg_uart_rx]	// ** HCL() START **  read rx uart
-	(s0 !< 0) ? pc := @ch_ok	// (ch !< 0) ? not neg = not empty
-	pc := P7, P0	// RETURN =>
+	(s0 < 0) ? pc := @ch_void	// (ch < 0) ? neg = empty
+	(s0 == 0) ? pc := @ch_void	// (ch == 0) ? 0 = null
+	s0 >>= 7	// chk[7] >> [0] (cpy)
+	(P0 == 0) ? pc := @ch_ok	// (ch[7] == 0) ? not extended
+@ch_void	pc := P7, P0	// RETURN =>
 @ch_ok	s7 := pc := @ch_echo	// <=> ch_echo()
 	s0 := s0	// copy ch
 	s7 := pc := @str_push	// <=> str_push()
@@ -439,10 +449,9 @@ STK
 	(P0 == 0) ? pc := @ok_tok	// chk error
 	s7 := pc := @hcl_abort	// <=> hcl_abort()
 @ok_tok	s7 := pc := @hcl_parse	// <=> hcl_parse()
-	pc := @hcl }	// back to start
+	pc := P7 }	// RETURN =>  ** SUB END **
 
 
-	
 // HCL_ABORT(5:t_addr, 6:s_addr, 7:rtn | 5:t_addr, 6:s_addr)
 // "\n?" to TX UART, do clear
 @hcl_abort {	s0 := '\n'	// ** HCL_ABORT() START **  '\n'

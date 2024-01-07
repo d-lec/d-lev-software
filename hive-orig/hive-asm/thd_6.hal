@@ -105,8 +105,9 @@
 	(s5 !< 0) ? pc := @mode_nlz	// (mode !< 0) ?
 	P0 := s4 	// replace lr_mix with f_mix
 // P5 (xmix)
-@mode_nlz	s1 := mem[@r_p5_ds]	// get xmix[-31:31](fs)
-	s7 := pc := @reson_xmix	// <=> reson_xmix()
+@mode_nlz	s1 := mem[@r_p5_ds]	// get xmix[-31:31](abs_tfs)
+	s1 :bs= mem[@r_p5_ds+4]	// get xmix_enc[-31:31]
+	s7 := pc := @filt_xmix	// <=> filt_xmix()
 // P4 (hpf)
 	s1 := mem[@r_p4_ds]	// get hpf[0:127](48db_freq)
 	s6 := @r_hp4_ds	// hpf ds addr
@@ -158,7 +159,7 @@
 	s2 := mem[@pp_out_ds]	// PP_L := pp_out
 	s3 := s2	// PP_R := pp_out
 // PP_P4 (mode)
-	s4 := mem[@pp_p4_ds]	// get mode[0:11]
+	s4 := mem[@pp_p4_ds]	// get mode[0:12]
 	P4 &= 0x3	// mode[1:0]
 	(s4 != 0) ? pc := @m_lsbs_nz	// (mode[1:0] != 0) ?
 	P2 := 0	// PP_L := 0

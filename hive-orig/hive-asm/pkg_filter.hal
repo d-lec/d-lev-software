@@ -67,26 +67,43 @@
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 
-// LP1_UBI(0:in, 1:fall, 2:rise, 6:addr, 7:rtn | 0:lp) 
+// HP1(0:in, 1:w, 6:addr, 7:rtn | 0:hp, 1:w, 6:addr) 
+// 1st order filter
+// signed I/O, all I/O is passthru!
+// w = 1 - e^(-2 * pi * Fc/Fs)
+// w ~= 2 * pi * Fc/Fs
+// Fc ~= w * Fs / (2 * pi)
+// mem[s6] := lp
+// 7 cycles
+@hp1 {	s2 := mem[s6]	// get lp  ** HP1() START **  
+	P0 -s= s2	// hp := in - lp
+	P0 := sat(s0)	// sat(hp)
+	s0 *xsu= s1	// hp * w (cpy)
+	P2 +s= P0	// lp := lp + (hp * w)
+	mem[s6] := P2	// sto lp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// HP1_UBI(0:in, 1:fall, 2:rise, 6:addr, 7:rtn | 0:hp) 
 // 1st order filter with separate fall and rise rates
 // unsigned I/O
-// can't overload if (w < 0.5)
+// can't overload
 // w = 1 - e^(-2 * pi * Fc/Fs)
 // w ~= 2 * pi * Fc/Fs
 // Fc ~= w * Fs / (2 * pi)
 // mem[s6] := lp
 // 9 cycles max
-@lp1_ubi {	s4 := mem[s6]	// get lp  ** LP1_UBI() START **  
-	(s0 <u s4) ? pc := @in_lt_lp	// (in < lp) ?
+@hp1_ubi {	s4 := mem[s6]	// get lp  ** HP1_UBI() START **  
+	P0 -u= s4	// hp := in - lp
+	P0 := sat(s0)	// sat(hp)
+	(s0 < 0) ? pc := @fall	// (hp < 0) ?
 	P1 := s2	// w := rise
-@in_lt_lp	s4 *xu= s1	// lp * w (cpy)
-	P0 *xu= P1	// in * w
-	P0 -u= P4	// hp := (in - lp) * w
-	P0 +us= P4	// lp := hp + lp
-	mem[P6] := s0	// sto lp
+@fall	s0 *xsu= P1	// hp * w (cpy)
+	P4 +us= P0	// lp := lp + (hp * w)
+	mem[P6] := P4	// sto lp
 	pc := P7, P2 }	// RETURN =>  ** SUB END **
 
-	
+
 // HP2(0:in, 1:w, 6:addr, 7:rtn | 0:hp, 6:addr) 
 // 2nd order high pass filter
 // signed I/O
@@ -320,21 +337,6 @@
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 
-// SVF_XMIX(0:in_0, 1:xmix, 4:in_1, 7:rtn | 0:out) 
-// crossfades 2 signed inputs together
-// in_0 : filter input
-// in_1 : bypass input
-// can't ofl/ufl
-// expects xmix[0:31](fs)
-// 6 cycles max
-@svf_xmix {	P0 *xsu= s1	// in_1 * xmix  ** SVF_XMIX() START **
-	s2 := 0xf8000000	// ~xmix[31:27]
-	P1 ^= P2
-	P4 *xsu= P1	// in_0 * ~xmix[31:27]
-	P0 +s= P4	// add
-	pc := P7 }	// RETURN =>  ** SUB END **
-
-
 // SVF(0:in, 1:freq, 2:damp, 5:sel, 6:addr, 7:rtn | 0:out) 
 // svf 2x in series
 // sel: -4:notch2, -3:lp2, -2:bp2, -1:hp2, 0:thru, 1:hp4, 2:bp4, 3:lp4, 4:notch4
@@ -371,6 +373,19 @@
 // 3 + 14 = 17 cycles max
 @form {	s7 := pc := @svf_hp	// => @svf_hp()  ** FORM() START **  
 	P0 := mem[P6]	// bp
+	pc := P7 }	// RETURN =>  ** SUB END **
+
+
+// FILT_XMIX(0:in_0, 1:xmix\enc, 4:in_1, 7:rtn | 0:out_0, 4:out_1) 
+// linearly crossfades 2 signed inputs, doesn't mix them
+// in_0 : filter input
+// in_1 : bypass input
+// 6 cycles max
+@filt_xmix {	(P1 !< 0) ? pc := @enc_nn	// (enc !< 0) ?  ** FILT_XMIX() START **
+	P0 := ~s0	// ~in_0 (polarity)
+@enc_nn	P0 *xsu= s1	// in_0 * xmix
+	P1 := ~s1	// ~xmix
+	P4 *xsu= P1	// in_1 * ~xmix
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 
@@ -444,35 +459,17 @@
 // 12 + 7 = 19 cycles max
 @reson_aar {	s5 *xs= s3	// in * a_fb (cpy)  ** RESON_AAR SUB START **  
 	s0 := mem[s4]	// get a_old
-	s7 := pc := @lp1	// => @lp1()
+	s7 := pc := @hp1	// => @hp1()
+	P0 := mem[P6]	// get lp
 	P0 -s= P5	// lp - (in * a_fb)
 	P0 := sat(s0)	// sat
 	P0 *su= 2	// *2
-	s1 := sat(P0)	// a_out := sat (mov)
+	P1 := sat(P0)	// a_out := sat (mov, pop lp_w)
 	s1 *xs= P3	// a_out * a_fb (cpy)
 	P5 >>>= 1	// in/2
 	P1 +s= P5	// a_new := (a_out * a_fb)*2 + in/2
 	mem[P4] := P1	// sto a_new
 	pc := P7 }	// RETURN =>  ** SUB END **
-
-
-// RESON_XMIX(0:in_0, 1:xmix, 4:in_1, 7:rtn | 0:out_0, 4:out_1) 
-// crossfades 2 signed inputs but doesn't combine them
-// in_0 : filter input
-// in_1 : bypass input
-// can't ofl/ufl
-// expects xmix[-31:31](fs)
-// 10 cycles max
-@reson_xmix {	s1 >>>= 31	// xmix full msb (cpy)  ** RESON_XMIX() START **
-	P0 ^= P1	// in_0 ^ xmix full msb (input polarity)
-	s2 := sgn(s1)	// |xmix|
-	P1 *su= P2	// 
-	P1 *u= 2	// fs
-	P0 *xsu= s1	// out_0 := in_0 * xmix
-	s3 := 0xf8000000	// flip bits
-	P1 ^= P3
-	P4 *xsu= P1	// out_1 := in_1 * ~xmix
-	pc := P7 }	// RETURN =>
 
 
 // RESON_DLY(0:enc_fs, 7:rtn | 0:out) 
@@ -488,36 +485,6 @@
 	P0 >>= 22	// scale
 	P0 += 4	// offset (min 5)
 	pc := P7 }	// RETURN =>
-
-
-// LP1(0:in, 1:w, 6:addr, 7:rtn | 0:lp) 
-// 1st order filter
-// signed I/O
-// w = 1 - e^(-2 * pi * Fc/Fs)
-// w ~= 2 * pi * Fc/Fs
-// Fc ~= w * Fs / (2 * pi)
-// mem[s6] := lp
-// 3 +7 = 10 cycles
-@lp1 {	s7 := pc := @hp1	// => @hp1()  ** LP1() START **  
-	P0 := mem[P6]	// get lp
-	pc := P7, P1 }	// RETURN =>  ** SUB END **
-
-
-// HP1(0:in, 1:w, 6:addr, 7:rtn | 0:hp, 1:w, 6:addr) 
-// 1st order filter
-// signed I/O, all I/O is passthru!
-// w = 1 - e^(-2 * pi * Fc/Fs)
-// w ~= 2 * pi * Fc/Fs
-// Fc ~= w * Fs / (2 * pi)
-// mem[s6] := lp
-// 7 cycles
-@hp1 {	s2 := mem[s6]	// get lp  ** HP1() START **  
-	P0 -= s2	// hp := in - lp
-	P0 := sat(s0)	// sat(hp)
-	s0 *xsu= s1	// hp * w (cpy)
-	P2 += P0	// lp := lp + (hp * w)
-	mem[s6] := P2	// sto lp
-	pc := P7 }	// RETURN =>  ** SUB END **
 
 
 // EQ_UNIT(0:in, 1:w, 2:eq, 3:boost, 4:hi, 6:addr, 7:rtn | 0:out, 1:w, 2:eq, 3:boost, 4:hi, 6:addr)
@@ -571,21 +538,6 @@
 	P6 +u= 4	// offs addr
 	s7 := pc := @eq_unit	// => @eq_unit()
 	P6 P4 P3 P2 P1	// clean
-	pc := P7 }	// RETURN =>  ** SUB END **
-
-
-// EQ_TONE(0:in, 2:eq, 6:addr, 7:rtn | 0:out)
-// bass/treble boost EQ
-// eq<0: boost bass, else boost treble
-// 2nd order
-// mem[s6]   := lp1
-// mem[s6+4] := lp0
-// 4 +43 = 47 cycles max
-@eq_tone {	(s2 < 0) ? pc := @eq_lz	// (eq < 0) ?  ** EQ_TONE SUB START **
-	s7 := pc := @eq_treb	// => @eq_treb()
-	pc := P7	// RETURN =>
-@eq_lz	P2 *s= -1	// |eq|
-	s7 := pc := @eq_bass	// => @eq_bass()
 	pc := P7 }	// RETURN =>  ** SUB END **
 
 

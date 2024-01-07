@@ -157,30 +157,29 @@
 
 // MIDI_ACT(6:state, 7:rtn | 0:act, 6:state) 
 // check volume threshold
-// return 1 if active, else 0
-// positive hysteresis @ off=>on threshold
-// >>24 gives 1/64 (can't turn on @max b/c vloc is [0:63])
-// >>23 gives 1/128 (max)
-// >>22 gives 1/256
-// >>21 gives 1/512
-// >>20 gives 1/1024
-// 8 +5 = 13 cycles max
-@midi_act {	s0 := mem[@v_pre_ds]	// get pre volume  ** MIDI_ACT() START **
+// return 0 if inactive, else NZ
+// if damp > 0 : use dloc for on=>off threshold
+// if damp > 0 : don't allow off=>on below dloc threshold
+// 10 +5 = 15 cycles max
+@midi_act {	s0 :bu= mem[@e_p5_ds+4]	// get damp_enc[0:63]  ** MIDI_ACT() START **
+	(s0 == 0) ? pc := @de_z	// (damp_enc == 0) ?
+	P0 := mem[@v_damp_ds]	// get v_damp
+	s1 := -1	// -1
+	(s0 == P1) ? pc := @vd_neg1	// (v_damp == -1) ?
+	P0 := 0	// act := 0
+	pc := P7	// => RETURN
+@vd_neg1	(s6 != 0) ? pc := @st_act	// (state != 0) ?
+@de_z	P0 := mem[@v_pre_ds]	// get pre volume
 	s1 := mem[@m_p1_ds]	// get vloc[0:63](fs)
 	s7 := pc := @xk_mod	// <=> xk_mod()
-	(s6 != 0) ? pc := @state_nz	// (state != 0) ?
-	P0 >>= 23	// hysteresis
-@state_nz	(s0 == 0) ? pc := @act_z	// (act == 0) ?
-	P0 := 1	// act := 1
-@act_z	pc := P7 } 	// => RETURN
+@st_act	pc := P7 } 	// => RETURN
 
 
 // MIDI_VEL(7:rtn | 1:vel) 
 // calculate midi velocity
-// weird: use abs v_bpf to capture movement @ threshold
 // (velo_ENC == 0)  ? vel := 64
 // (velo_ENC == 31) ? vel := 127
-// 15 cycles max
+// 13 cycles max
 @midi_vel {	s1 :bu= mem[@m_p4_ds+4]	// get velo_ENC value  ** MIDI_VEL() START **
 	(s1 != 0) ? pc := @enc_nz	// (ENC != 0) ? => continue
 	P1 := 64	// vel := 64
@@ -190,11 +189,9 @@
 	P1 := 127	// vel := 127
 	pc := P7 	// => RETURN
 @enc_ok	P1 := mem[@m_p4_ds]	// get velo[0:31](48db_dn)
-	s2 := mem[@v_bpf_ds]	// get v_bpf
-	s3 := s2 >>> 31	// abs(v_bpf)
-	P2 ^= P3
-	P1 *xu= P2	// velo * v_bpl
-	P1 <<= 10	// scale
+	s2 := mem[@v_hpf_ds]	// get v_hpf
+	P1 *xu= P2	// velo * v_hpf
+	P1 <<= 11	// scale
 	P1 := lim(s1)	// lim
 	P1 >>= 25	// 7 bit!
 	(s1 != 0) ? pc := @min_ok
@@ -278,7 +275,9 @@
 	pc := @done_inc	// => next
 
 @2_on	s7 := pc := @midi_act	// <=> midi_act()
-	mem[@act_ds] :b= s0	// sto act
+	(s0 == 0) ? pc := @act_z	// (act == 0) ?
+	P0 := 1	// act := 1
+@act_z	mem[@act_ds] :b= s0	// sto act[0:1]
 	(P0 == 0) ? pc := @done_inc	// (act == 0) ? next
 	s4 :bu= mem[@m_p2_ds+4]	// get bend ENC value
 	(P4 == 0) ? pc := @done	// (bend ENC == 0) ? stay here
@@ -297,7 +296,7 @@
 @3_on_off	s0 :bu= mem[@key_ds]	// get key
 	s1 := 0	// vel := 0
 	s7 := pc := @midi_key_vel_tx	// <=> midi_key_vel_tx()
-	P6 :bu= mem[@act_ds]	// state := act (tricky!)
+	P6 :bu= mem[@act_ds]	// state := act[0:1] (tricky!)
 	pc := @done_sto	// => done_sto
 // returns & cc tx
 @done_inc	P6++	// inc state

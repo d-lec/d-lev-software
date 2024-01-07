@@ -87,9 +87,10 @@
 	(s2 != P3) ? pc := @_resr	// (type != 0xf0) ? skip
 	P2 := 127	// enc_max := 127
 	pc := @dup_rtn	// => dup_rtn
-// (enc < 0xf3) ? reson_reso | form_levl
-@_resr	s3 := 0xf3	// hi limit
-	(s2 !<u P3) ? pc := @_midicc	// (type !< 0xf3) ? skip
+
+// (enc == 0xf1) ? reson_reso
+@_resr	s3 := 0xf1	// type
+	(s2 != P3) ? pc := @_midicc	// (type != 0xf1) ? skip
 	P2 := 63	// enc_max := 63
 	pc := @dup_rtn	// => dup_rtn
 // (enc == 0xfc) ? midi_cc
@@ -246,9 +247,31 @@
 	pc := @sto_rtn	// sto_rtn
 // (enc < 0xcc) ? sgn_fs_sq
 @_sfssq	s3 := 0xcc	// hi limit
-	(s2 !<u P3) ? pc := @_cuplx	// (type !< 0xcc) ? skip
+	(s2 !<u P3) ? pc := @_abstfs	// (type !< 0xcc) ? skip
 	s7 := pc := @enc_fs	// <=> enc_fs()
 	s7 := pc := @plat1_sq	// <=> plat1_sq()
+	pc := @sto_rtn	// sto_rtn
+// (enc == 0xcd) ? abs_tfs
+@_abstfs	s3 := 0xcd	// hi type
+	(s2 != P3) ? pc := @_s48db_dn	// (type != 0xcd) ? skip
+	s1 := sgn(s0)	// sgn
+	P0 *s= P1	// abs
+	P0 <<= 27	// fs
+	s1 := 0x8421084	// 0.032258064516129
+	P1 *xu= s0	// mult
+	P0 +u= P1	// true fs
+	pc := @sto_rtn	// sto_rtn
+// (enc < 0xd4) ? s48db_dn
+@_s48db_dn	s3 := 0xd4	// hi limit
+	(s2 !<u P3) ? pc := @_cuplx	// (type !< 0xd4) ? skip
+	s1 := sgn(s0)	// sgn
+	P0 *s= s1	// abs
+	P0 <<= 1	// fs
+	s7 := pc := @enc_fs	// <=> enc_fs()
+	s3 := 4	// 4 * 12db = 48db
+	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
+	P0 >>= 1	// /2
+	P0 *= P1	// restore sgn
 	pc := @sto_rtn	// sto_rtn
 // (enc == 0xf0) ? cube_plat_exp
 @_cuplx	s3 := 0xf0	// type
@@ -257,7 +280,7 @@
 	pc := @sto_rtn	// sto_rtn
 // (enc == 0xf1) ? rev_72db_dn_rev
 @_r72dr	s3 := 0xf1	// type
-	(s2 != P3) ? pc := @_s48db_dn	// (type != 0xf1) ? skip
+	(s2 != P3) ? pc := @sto_rtn	// (type != 0xf1) ? skip
 	s1 := sgn(s0)	// sgn
 	P0 *s= s1	// abs
 	P0 ^= 0x3f	// rev
@@ -265,17 +288,6 @@
 	s3 := 6	// 6 * 12db = 72db
 	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
 	P0 := ~s0	// not
-	P0 >>= 1	// /2
-	P0 *= P1	// restore sgn
-	pc := @sto_rtn	// sto_rtn
-// (enc == 0xf2) ? s48db_dn
-@_s48db_dn	s3 := 0xf2	// type
-	(s2 != P3) ? pc := @sto_rtn	// (type != 0xf2) ? skip
-	s1 := sgn(s0)	// sgn
-	P0 *s= s1	// abs
-	P0 <<= 26	// fs
-	s3 := 4	// 4 * 12db = 48db
-	s7 := pc := @enc_exp2_dn	// <=> enc_exp2_dn()
 	P0 >>= 1	// /2
 	P0 *= P1	// restore sgn
 	pc := @sto_rtn } 	// sto_rtn  ** SUB END **
@@ -630,11 +642,13 @@ TYPE     ENC          USE                             DISP
 int range
 80       [-1:0]       ENC                             ENC
 81       [-2:1], etc.
+9e       [-31:30]
 9f       [-32:31]
 ----     ---          ---                             ----
 equal +/- range
 a1       [-1:1]       ENC                             ENC
 a2       [-2:2], etc.
+be       [-30:30]
 bf       [-31:31]
 ----     ---          ---                             ----
 equal +/- 2^n range
@@ -654,17 +668,23 @@ c8       [-15:15]     (ENC<<27)^2                     ENC
 c9       [-31:31]     (ENC<<26)^2
 ca       [-63:63]     (ENC<<25)^2
 cb       [-127:127]   (ENC<<24)^2
+----     ---          ---                             ----
+equal +/- 2^n range, abs & true full scale
+cd       [-31:31]     (|ENC|<<27)*1.0322              ENC
+----     ---          ---                             ----
+equal +/- 2^n range, full scale, 48dB, 256:1), offs
+d0       [-15:15]     (exp2((ENC*mul)+offs))-offs     ENC
+d1       [-31:31]     (exp2((ENC*mul)+offs))-offs
+d2       [-63:63]     (exp2((ENC*mul)+offs))-offs
+d3       [-127:127]   (exp2((ENC*mul)+offs))-offs
 ==========================================================
 TYPE     ENC          USE                             DISP
 ----     ---          ---                             ----
-equal +/- 2^n range, 3 cubic plateaus, exp2
+3 cubic plateaus, exp2
 f0       [-127:127]   exp2(0xf8000000+(plat3(ENC<<24)>>>4)) ENC 
 ----     ---          ---                             ----
-equal +/- 2^n range, rev, mul, offs, exp2, not (resonator reso 84dB)
+rev, mul, offs, exp2, not (resonator reso 84dB)
 f1       [-63:63]                                     ENC
-----     ---          ---                             ----
-equal +/- 2^n range, mul, offs, exp2 (48dB, 256:1), offs
-f2       [-63:63]     (exp2((ENC*mul)+offs))-offs (form levl)
 ----     ---          ---                             ----
 midi cc
 fc       [-127:31]    ENC                             ENC
@@ -726,7 +746,7 @@ fd       [-99:99]     ENC                             ENC
 
 @p_p2_ds {	mem[1] := ( 1 ) 	// use  ** P_P2_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[1] :b= ( 0x27 )	// type [0:255](fs)
 	mem[4] :b= ( "Ofs-" ) }	// lbl
 
 @p_p3_ds {	mem[1] := ( 1 ) 	// use  ** P_P3_DS **
@@ -736,7 +756,7 @@ fd       [-99:99]     ENC                             ENC
 
 @p_p4_ds {	mem[1] := ( 1 ) 	// use  ** P_P4_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[1] :b= ( 0x27 )	// type [0:255](fs)
 	mem[4] :b= ( "Ofs+" ) }	// lbl
 	
 @p_p5_ds {	mem[1] := ( 1 ) 	// use  ** P_P5_DS **
@@ -756,7 +776,7 @@ fd       [-99:99]     ENC                             ENC
 
 @v_p2_ds {	mem[1] := ( 1 ) 	// use  ** V_P2_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[1] :b= ( 0x27 )	// type [0:255](fs)
 	mem[4] :b= ( "Ofs-" ) }	// lbl
 
 @v_p3_ds {	mem[1] := ( 1 ) 	// use  ** V_P3_DS **
@@ -766,12 +786,12 @@ fd       [-99:99]     ENC                             ENC
 
 @v_p4_ds {	mem[1] := ( 1 ) 	// use  ** V_P4_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
 	mem[4] :b= ( "Drop" ) }	// lbl
 
 @v_p5_ds {	mem[1] := ( 1 ) 	// use  ** V_P5_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x26 )	// type [0:127](fs)
+	mem[1] :b= ( 0x27 )	// type [0:255](fs)
 	mem[4] :b= ( "Ofs+" ) }	// lbl
 
 @v_p6_ds {	mem[1] := ( 1 ) 	// use  ** V_P6_DS **
@@ -831,7 +851,7 @@ fd       [-99:99]     ENC                             ENC
 
 @p_p6_ds {	mem[1] := ( 1 ) 	// use  ** P_P6_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[1] :b= ( 0x20 )	// type [0:31]
 	mem[4] :b= ( "Lift" ) }	// lbl
 // LAST SYS PARAM!
 @p_p7_ds {	mem[1] := ( 1 ) 	// use  ** P_P7_DS **  !!! SYSTEM PARAMS END !!!
@@ -890,9 +910,9 @@ fd       [-99:99]     ENC                             ENC
 	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
 	mem[4] :b= ( "odd " ) }	// lbl
 	
-@o_p2_ds {	mem[1] := ( 1 ) 	// use  ** O_P2_DS **
+@o_p2_ds {	mem[1] := ( -1 ) 	// use  ** O_P2_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31] (fs)
+	mem[1] :b= ( 0xcd )	// type [-31:31](abs_tfs)
 	mem[4] :b= ( "harm" ) }	// lbl
 
 @o_p3_ds {	mem[1] := ( 1 ) 	// use  ** O_P3_DS **
@@ -915,9 +935,9 @@ fd       [-99:99]     ENC                             ENC
 	mem[1] :b= ( 0xf0 )	// type [-127:127](plat_3cux)
 	mem[4] :b= ( "offs" ) }	// lbl
 
-@o_p7_ds {	mem[1] := ( 1 ) 	// use  ** O_P7_DS **
+@o_p7_ds {	mem[1] := ( -1 ) 	// use  ** O_P7_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[1] :b= ( 0xcd )	// type [-31:31](abs_tfs)
 	mem[4] :b= ( "xmix" ) }	// lbl
 
 @o_p8_ds {	mem[1] := ( 1 ) 	// use  ** O_P8_DS **
@@ -982,7 +1002,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @o_p20_ds {	mem[1] := ( 1 ) 	// use  ** O_P20_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[1] :b= ( 0xcd )	// type [-31:31](abs_tfs)
 	mem[4] :b= ( "xmix" ) }	// lbl
 ///////////
 // NOISE //
@@ -1039,7 +1059,7 @@ fd       [-99:99]     ENC                             ENC
 
 @n_p12_ds {	mem[1] := ( 1 ) 	// use  ** N_P12_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x24 )	// type [0:31](fs)
+	mem[1] :b= ( 0xcd )	// type [-31:31](abs_tfs)
 	mem[4] :b= ( "xmix" ) }	// lbl
 
 @n_p13_ds {	mem[1] := ( 1 ) 	// use  ** N_P13_DS **
@@ -1081,7 +1101,7 @@ fd       [-99:99]     ENC                             ENC
 
 @r_p5_ds {	mem[1] := ( 1 ) 	// use  ** R_P5_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xc5 )	// type [-31:31](fs)
+	mem[1] :b= ( 0xcd )	// type [-31:31](abs_tfs)
 	mem[4] :b= ( "xmix" ) }	// lbl
 
 @r_p6_ds {	mem[1] := ( 2 ) 	// use  ** R_P6_DS **
@@ -1098,7 +1118,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p1_ds {	mem[1] := ( 1 ) 	// use  ** F_P1_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p2_ds {	mem[1] := ( 1 ) 	// use  ** F_P2_DS **
@@ -1108,7 +1128,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p3_ds {	mem[1] := ( 1 ) 	// use  ** F_P3_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p4_ds {	mem[1] := ( 1 ) 	// use  ** F_P4_DS **
@@ -1118,7 +1138,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p5_ds {	mem[1] := ( 1 ) 	// use  ** F_P5_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 	
 @f_p6_ds {	mem[1] := ( 1 ) 	// use  ** F_P6_DS **
@@ -1168,7 +1188,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p15_ds {	mem[1] := ( 1 ) 	// use  ** F_P15_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p16_ds {	mem[1] := ( 1 ) 	// use  ** F_P16_DS **
@@ -1178,7 +1198,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p17_ds {	mem[1] := ( 1 ) 	// use  ** F_P9_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p18_ds {	mem[1] := ( 1 ) 	// use  ** F_P18_DS **
@@ -1188,7 +1208,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p19_ds {	mem[1] := ( 1 ) 	// use  ** F_P19_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p20_ds {	mem[1] := ( 1 ) 	// use  ** F_P20_DS **
@@ -1203,7 +1223,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p23_ds {	mem[1] := ( 1 ) 	// use  ** F_P23_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p24_ds {	mem[1] := ( 1 ) 	// use  ** F_P24_DS **
@@ -1213,7 +1233,7 @@ fd       [-99:99]     ENC                             ENC
 	
 @f_p25_ds {	mem[1] := ( 1 ) 	// use  ** F_P25_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0xf2 )	// type [-63:63](48db_dn)
+	mem[1] :b= ( 0xd2 )	// type [-63:63](s48db_dn)
 	mem[4] :b= ( "levl" ) }	// lbl
 
 @f_p26_ds {	mem[1] := ( 1 ) 	// use  ** F_P26_DS **
@@ -1319,7 +1339,7 @@ fd       [-99:99]     ENC                             ENC
 
 @pp_p4_ds {	mem[1] := ( 1 ) 	// use  ** PP_P4_DS **
 	mem[1] :b= ( 0 ) 	// enc
-	mem[1] :b= ( 0x0b )	// type [0:11]
+	mem[1] :b= ( 0x0c )	// type [0:12]
 	mem[4] :b= ( "mode" ) }	// lbl
 
 @pp_p5_ds {	mem[1] := ( 1 ) 	// use  ** PP_P5_DS **
