@@ -302,6 +302,8 @@ STK
 // RK block (read knob)
 @rk {	s3 := 'rk'	// * RK block *
 	(s0 != P3) ? pc := @ws	// skip block?
+	s3 := 0
+	mem[@newdata_int] :b= P3
 	s7 := pc := @rd_params	// <=> rd_params()
 @loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
 	s7 := pc := @knob_param_ptr	// <=> knob_param_ptr()

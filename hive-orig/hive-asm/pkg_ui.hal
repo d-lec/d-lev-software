@@ -45,6 +45,8 @@
 // handle gpio input events
 // return if nothing to do
 @do_gpio {	s0 :bu= mem[@gpio_act_ds]	// ** DO_GPIO() START **  get gpio_act[7:0]
+	s3 := 1
+	mem[@newdata_int] :b= P3
 	(s0 != 0) ? pc := @_mute
 	pc := P7, P0	//  => RETURN
 @_mute	s0 &= 0x1	// mask gpio_act[0] (mute) (cpy)

@@ -32,6 +32,9 @@
 	s2 := mem[@v_p7_ds] 	// get Out[0:1]
 	P2 ^= 1	// mute := ~Out
 	P0 |= P2	// bklt | mute
+	s2 := mem[@newdata_int] // get newdata_int value 
+	P2 <<= 2 // result goes in gpio[2]
+	P0 |= P2 // bklt | mute | newdata_int
 	reg[`reg_io] := P0	// write gpio_o
 //////////
 // INIT //
@@ -115,6 +118,7 @@
 ////////////////
 // data store //
 ////////////////
+@newdata_int { mem[1] :b= ( 0 ) }
 @pm_mod_ds {	mem[1] := ( 0 ) }	// ** PM_MOD_DS **
 @vl_mod_ds {	mem[1] := ( 0 ) }	// ** VL_MOD_DS **
 @vh_mod_ds {	mem[1] := ( 0 ) }	// ** VH_MOD_DS **
