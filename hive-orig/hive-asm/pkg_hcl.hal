@@ -300,15 +300,21 @@ STK
 	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
 	pc := @clear }	// => clear()
 // RK block (read knob)
+// $14bf
 @rk {	s3 := 'rk'	// * RK block *
 	(s0 != P3) ? pc := @ws	// skip block?
 	s3 := 0
-	mem[@newdata_int] :b= P3
+	mem[@newdata_int] :b= P3 // set global 'new data' flag
 	s7 := pc := @rd_params	// <=> rd_params()
 @loop	s7 := pc := @addr_tx	// <loop start> <=> addr_tx()
 	s7 := pc := @knob_param_ptr	// <=> knob_param_ptr()
-	s0 :bu= mem[P4+4]	// rd knob
-	s7 := pc := @uint_tx	// <=> uint_tx()
+	s0 :hu= mem[P4+4]	// mem[4]=val, mem[5]=typ
+	s0 &= 0xff		// mask val (don't pop)
+	s7 := pc := @uint_tx	// send val
+	s0 := ' '
+	s7 := pc := @ch_tx	// send space
+	P0 >>= 8		// mask typ, send typ
+	s7 := pc := @uint_tx	
 	P1 += 1	// knob++
 	(s2 !<u s1) ? pc := @loop	// <loop end> chk addr
 	pc := @clear }	// => clear()
